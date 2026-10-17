@@ -1,0 +1,1010 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>[hidden]{display:none!important}body{margin:0}</style>
+<title>LG Remote Prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap">
+<style>
+/* Layout: one iPhone-sized app. On a desktop it sits in a device frame scaled to the window; on a phone it fills the screen. */
+:root {
+  --stage: #050506;
+  --bg: #0B0B0C;
+  --card: #141415;
+  --raise: #1D1D1F;
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.11);
+  --text: #F2F2F3;
+  --muted: #8B8B90;
+  --dim: #808086;
+  --track: #2A2A2D;
+  --track-alt: #303034;
+  --blue: #0A84FF;
+  --on-blue: #FFFFFF;
+  --font: "Geist", "SF Pro Text", -apple-system, "Helvetica Neue", system-ui, sans-serif;
+  --spring: cubic-bezier(.2, .9, .1, 1);
+  --pop: cubic-bezier(.34, 1.56, .64, 1);
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--stage); color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; overflow: hidden; }
+button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+button:focus { outline: none; }
+button:focus-visible, .bar:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: -1px; padding: 0; border: 0; }
+.ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.ic-md { width: 22px; height: 22px; }
+
+.stage { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding-block: 20px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.fit { position: relative; width: calc(412px * var(--s, 1)); height: calc(866px * var(--s, 1)); flex: none; }
+/* The frame's shadow lives on its own element so animations inside the phone never repaint it. */
+.fit::before { content: ""; position: absolute; inset: 0; border-radius: calc(58px * var(--s, 1)); box-shadow: 0 0 0 1px var(--line-strong), 0 40px 120px rgba(0, 0, 0, 0.7); pointer-events: none; }
+.device { width: 390px; height: 844px; position: relative; overflow: hidden; background: var(--bg); border: 11px solid #19191B; border-radius: 58px; transform: scale(var(--s, 1)); transform-origin: top left; }
+
+.app { position: absolute; inset: 0; box-sizing: border-box; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 16px; padding: 60px 16px 34px; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.app::-webkit-scrollbar { display: none; }
+
+/* Header: TV switcher + power */
+.top { display: flex; align-items: center; gap: 12px; }
+.tv-switch { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; background: none; border: 0; padding: 4px 0; text-align: left; cursor: pointer; }
+.tv-name { display: flex; align-items: center; gap: 6px; font-size: 27px; font-weight: 600; letter-spacing: -0.015em; }
+.tv-name .ic { color: var(--muted); transition: transform 300ms var(--spring); }
+.tv-switch:active .tv-name .ic { transform: translateY(2px); }
+.tv-sub { display: flex; gap: 6px; align-items: baseline; font-size: 15px; color: var(--muted); white-space: nowrap; }
+.tv-sub b { font-weight: 500; color: var(--text); }
+.power { width: 54px; height: 54px; border-radius: 27px; border: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; background: var(--blue); color: var(--on-blue); transition: background-color 260ms ease, color 260ms ease, opacity 200ms ease, transform 420ms var(--pop); }
+.power:active { transform: scale(0.92); }
+.app.is-off .power { visibility: hidden; opacity: 0; transform: scale(0.8); transition: opacity 200ms ease, transform 300ms var(--spring), visibility 0s 200ms; }
+
+/* Cards */
+.tools, .offpanel { transition: opacity 320ms ease, transform 420ms var(--spring); }
+.tools { display: flex; flex-direction: column; gap: 12px; }
+.app.is-off .tools { opacity: 0; transform: scale(0.97) translateY(8px); pointer-events: none; position: absolute; left: 16px; right: 16px; visibility: hidden; transition: opacity 320ms ease, transform 420ms var(--spring), visibility 0s 320ms; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 26px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.card h2, .sheet h2 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.01em; }
+.stat { display: flex; align-items: baseline; gap: 6px; margin-top: 6px; font-size: 16px; white-space: nowrap; color: var(--muted); }
+.stat .roll { color: var(--text); font-weight: 500; }
+.note { color: var(--muted); font-weight: 500; }
+
+.roll { display: inline-flex; height: 1.25em; line-height: 1.25em; overflow: hidden; font-variant-numeric: tabular-nums; transition: color 240ms ease; }
+.roll .col { display: block; height: 1.25em; overflow: hidden; }
+.roll .stack { display: flex; flex-direction: column; transition: transform 520ms var(--spring); will-change: transform; }
+.roll.fast .stack { transition-duration: 120ms; }
+
+.pill { height: 38px; padding: 0 14px; border-radius: 19px; border: 0; background: var(--raise); display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: 15px; flex: none; }
+.round { width: 38px; height: 38px; border-radius: 19px; border: 0; background: var(--raise); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none; transition: background-color 220ms ease, color 220ms ease; }
+.round[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.stepper { display: flex; height: 38px; border-radius: 19px; background: var(--raise); overflow: hidden; }
+.stepper button { width: 44px; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; touch-action: none; }
+.stepper button:active { background: rgba(255, 255, 255, 0.06); }
+.stepper i { width: 1px; margin: 10px 0; background: var(--line-strong); }
+.controls { display: flex; gap: 8px; align-items: center; }
+
+/* Bulging capsule bar + floating tooltip */
+.bar { position: relative; padding-top: 42px; touch-action: none; cursor: pointer; user-select: none; -webkit-user-select: none; }
+.bar.vol { cursor: ew-resize; margin-top: -26px; }
+.bar svg { display: block; width: 100%; overflow: visible; will-change: transform; }
+.tip { position: absolute; top: 0; left: 0; z-index: 2; pointer-events: none; opacity: 0; transform: translateX(-50%) translateY(4px) scale(0.92); transition: opacity 160ms ease, transform 240ms var(--spring); will-change: transform, opacity; }
+.tip.show { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+.tip.glide { transition: opacity 160ms ease, transform 240ms var(--spring), left 240ms var(--spring); }
+.tip-body { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 12px; background: #161618; border: 1px solid var(--line-strong); white-space: nowrap; font-size: 14px; font-variant-numeric: tabular-nums; }
+.tip-body span:last-child { color: var(--muted); }
+.tip::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 9px; height: 9px; margin-left: -5px; background: #161618; border-right: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); transform: rotate(45deg); }
+.dot { width: 9px; height: 9px; border-radius: 5px; background: var(--blue); flex: none; }
+.seg { transition: opacity 240ms ease; }
+
+/* Tiles */
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; cursor: pointer; text-align: left; transition: transform 420ms var(--pop); }
+.tile:active { transform: scale(0.97); }
+.tile .ic-md { color: var(--blue); }
+.tile-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tile-label { font-size: 13px; color: var(--muted); }
+.tile-value { font-size: 16px; font-weight: 600; }
+
+/* Favorites */
+.apps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 8px; }
+.app-btn { position: relative; background: none; border: 0; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 7px; cursor: pointer; transition: opacity 260ms ease; }
+.apps.pressing .app-btn:not(.pressed) { opacity: 0.32; }
+.app-icon { width: 62px; height: 62px; border-radius: 16px; background: var(--raise); display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); transition: transform 460ms var(--pop), box-shadow 260ms ease; }
+.app-icon svg { display: block; }
+.app-btn.pressed .app-icon { transform: translateY(-3px) scale(1.1); }
+.app-btn.current .app-icon { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 0 0 2px var(--card), 0 0 0 3.5px var(--blue); }
+.app-name { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #B4B4B9; white-space: nowrap; }
+.app-name .dot { width: 6px; height: 6px; opacity: 0; transition: opacity 240ms ease; }
+.app-btn.current .app-name .dot { opacity: 1; }
+.app-tip { position: absolute; bottom: calc(100% + 6px); left: 50%; z-index: 3; }
+.app-tip .tip-body { height: 30px; font-size: 13px; }
+
+/* Off state */
+.offpanel { display: none; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 22px; text-align: center; padding-bottom: 60px; }
+.app.is-off .offpanel { display: flex; animation: rise 520ms var(--spring) both; }
+.wake { width: 168px; height: 168px; border-radius: 84px; border: 1.5px solid var(--line-strong); background: var(--card); color: var(--blue); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 460ms var(--pop); }
+.wake:active { transform: scale(0.95); }
+.wake .ic { width: 54px; height: 54px; stroke-width: 1.8; }
+.off-title { font-size: 22px; font-weight: 600; }
+.off-help { margin: 8px 0 0; max-width: 270px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.off-undo { display: flex; align-items: center; gap: 10px; min-height: 38px; }
+
+/* Bottom sheet */
+.scrim { position: absolute; inset: 0; z-index: 20; background: rgba(0, 0, 0, 0.6); opacity: 0; pointer-events: none; transition: opacity 320ms ease; border: 0; width: 100%; padding: 0; cursor: pointer; }
+.scrim.open { opacity: 1; pointer-events: auto; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 21; background: var(--card); border-top: 1px solid var(--line-strong); border-radius: 30px 30px 0 0; padding: 10px 20px 38px; display: flex; flex-direction: column; gap: 16px; transform: translateY(calc(100% + 40px)); transition: transform 460ms var(--spring); visibility: hidden; }
+.sheet.open { transform: translateY(0); visibility: visible; }
+.sheet.dragging { transition: none; }
+.sheet:not(.open) { transition: transform 360ms var(--spring), visibility 0s 360ms; }
+.grab-zone { display: flex; flex-direction: column; gap: 14px; touch-action: none; cursor: grab; }
+.grabber { width: 40px; height: 5px; border-radius: 3px; background: #3A3A3E; align-self: center; }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sheet-sub { font-size: 15px; color: var(--muted); margin-top: 4px; display: block; }
+.panel { display: none; flex-direction: column; gap: 10px; }
+.sheet[data-kind="tvs"] .panel.tvs, .sheet[data-kind="speaker"] .panel.speaker, .sheet[data-kind="sleep"] .panel.sleep { display: flex; }
+
+.choice { display: flex; align-items: center; gap: 8px; background: var(--raise); border-radius: 20px; padding: 6px; box-shadow: inset 0 0 0 1.5px transparent; transition: box-shadow 260ms ease, transform 420ms var(--pop); }
+.choice.selected { box-shadow: inset 0 0 0 1.5px var(--blue); }
+.choice:has(.choice-pick:active) { transform: scale(0.985); }
+.choice-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; background: none; border: 0; padding: 4px 0 4px 6px; cursor: pointer; text-align: left; }
+.choice-icon { width: 42px; height: 42px; border-radius: 13px; background: #2A2A2E; color: var(--muted); display: flex; align-items: center; justify-content: center; flex: none; transition: background-color 260ms ease, color 260ms ease; }
+.choice.selected .choice-icon { background: rgba(10, 132, 255, 0.16); color: var(--blue); }
+.row-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.row-title { font-size: 17px; font-weight: 600; }
+.row-sub { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.choice-end { width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; flex: none; }
+.radio { width: 24px; height: 24px; border-radius: 12px; box-shadow: inset 0 0 0 2px #4A4A4E; display: flex; align-items: center; justify-content: center; color: var(--on-blue); transition: background-color 240ms ease, box-shadow 240ms ease, transform 420ms var(--pop); }
+.radio .ic { width: 14px; height: 14px; stroke-width: 3; opacity: 0; transform: scale(0.4); transition: opacity 200ms ease, transform 420ms var(--pop); }
+.choice.selected .radio { background: var(--blue); box-shadow: inset 0 0 0 2px var(--blue); }
+.choice.selected .radio .ic { opacity: 1; transform: none; }
+.row-power { width: 46px; height: 46px; border-radius: 23px; border: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; background: #2C2C30; color: #C9C9CE; transition: background-color 240ms ease, color 240ms ease, transform 420ms var(--pop); }
+.row-power:active { transform: scale(0.9); }
+.row-power[aria-pressed="true"] { background: var(--blue); color: var(--on-blue); }
+.add-row { height: 52px; border-radius: 18px; border: 1.5px dashed #3A3A3E; background: none; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; font-size: 15px; font-weight: 500; color: #C9C9CE; }
+
+.dial-wrap { position: relative; width: 280px; height: 280px; align-self: center; touch-action: none; cursor: grab; border-radius: 50%; }
+.dial-wrap:active { cursor: grabbing; }
+.dial-wrap:focus-visible { outline: 2px solid var(--blue); outline-offset: 6px; }
+.dial-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; will-change: transform; }
+.dial-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; pointer-events: none; text-align: center; }
+.dial-time { display: flex; align-items: baseline; font-size: 46px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.dial-secs { display: inline-flex; align-items: baseline; font-size: 22px; font-weight: 500; color: var(--muted); }
+.dial-sub { font-size: 14px; color: var(--muted); max-width: 150px; line-height: 1.35; }
+.sleep-foot { display: flex; align-items: center; justify-content: center; min-height: 40px; }
+
+.toast { position: absolute; left: 50%; bottom: 30px; z-index: 30; pointer-events: none; opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.96); transition: opacity 220ms ease, transform 360ms var(--spring); }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+.toast .tip-body { height: 40px; font-size: 14px; padding: 0 14px; }
+.toast .tip-body span:last-child { color: var(--text); }
+
+.morph { animation: morph 320ms var(--spring) both; }
+@keyframes morph { from { opacity: 0; transform: translateY(5px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes rise { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 500px) {
+  body { background: var(--bg); }
+  .stage { padding: 0; gap: 0; }
+  .fit { width: 100%; height: 100%; }
+  .fit::before { display: none; }
+  .device { width: 100%; height: 100%; border: 0; border-radius: 0; transform: none; }
+  .app { padding: 18px max(16px, env(safe-area-inset-right, 0px)) 28px max(16px, env(safe-area-inset-left, 0px)); }
+  .app.is-off .tools { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); }
+  .sheet { padding-bottom: max(28px, env(safe-area-inset-bottom, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="fit" id="fit">
+    <div class="device">
+      <div class="app" id="app">
+        <header class="top">
+          <button class="tv-switch" id="tvBtn" aria-haspopup="dialog">
+            <span class="tv-name"><span id="tvName">Living room</span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span>
+            <span class="tv-sub"><span id="tvStatus">Watching Netflix</span></span>
+          </button>
+          <button class="power" id="powerBtn" aria-pressed="true" aria-label="Turn off Living room">
+            <svg class="ic ic-md" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"></path><path d="M6.3 6.8a8 8 0 1 0 11.4 0"></path></svg>
+          </button>
+        </header>
+
+        <main class="tools" id="tools">
+          <section class="card" aria-labelledby="volTitle">
+            <div class="card-head">
+              <div>
+                <h2 id="volTitle">Volume</h2>
+                <div class="stat"><span class="roll" id="volRoll" aria-hidden="true"></span><span>of 100</span></div>
+              </div>
+              <div class="controls">
+                <button class="round" id="muteBtn" aria-pressed="false" aria-label="Mute">
+                  <svg class="ic" id="muteIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"></path><path d="M16.5 8.5a5 5 0 0 1 0 7"></path></svg>
+                </button>
+                <div class="stepper">
+                  <button id="volDown" aria-label="Volume down"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"></path></svg></button>
+                  <i aria-hidden="true"></i>
+                  <button id="volUp" aria-label="Volume up"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"></path><path d="M12 6v12"></path></svg></button>
+                </div>
+              </div>
+            </div>
+            <div class="bar vol" id="volBar" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="18">
+              <div class="tip" id="volTip"><div class="tip-body"><span class="dot"></span><span id="volTipVal" style="color: var(--text)">18</span></div></div>
+              <svg id="volSvg" height="60" aria-hidden="true"><path id="volTrack" fill="#2A2A2D"></path><path id="volFill" fill="#0A84FF"></path></svg>
+            </div>
+          </section>
+
+          <div class="tiles">
+            <button class="tile" id="soundTile" aria-haspopup="dialog">
+              <svg class="ic ic-md" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="2"></rect><circle cx="12" cy="14" r="3"></circle><path d="M12 7h.01"></path></svg>
+              <span class="tile-text"><span class="tile-label">Sound out</span><span class="tile-value" id="soundVal">Soundbar</span></span>
+            </button>
+            <button class="tile" id="sleepTile" aria-haspopup="dialog">
+              <svg class="ic ic-md" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg>
+              <span class="tile-text"><span class="tile-label">Sleep timer</span><span class="tile-value" id="sleepVal">Off</span></span>
+            </button>
+          </div>
+
+          <section class="card" aria-labelledby="favTitle">
+            <h2 id="favTitle">Favorites</h2>
+            <div class="apps" id="apps"></div>
+          </section>
+        </main>
+
+        <section class="offpanel" id="offPanel" aria-live="polite">
+          <button class="wake" id="wakeBtn" aria-label="Turn on Living room">
+            <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"></path><path d="M6.3 6.8a8 8 0 1 0 11.4 0"></path></svg>
+          </button>
+          <div class="off-undo" id="offUndo"></div>
+        </section>
+
+        <button class="scrim" id="scrim" aria-label="Close" tabindex="-1"></button>
+        <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" data-kind="tvs">
+          <div class="grab-zone" id="grabZone">
+            <div class="grabber" aria-hidden="true"></div>
+            <div class="sheet-head">
+              <h2 id="sheetTitle">Your TVs</h2>
+              <button class="round" id="sheetClose" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button>
+            </div>
+          </div>
+
+          <div class="panel tvs" id="tvList"></div>
+          <div class="panel speaker" id="outList"></div>
+          <div class="panel sleep">
+            <div class="dial-wrap" id="dial" role="slider" tabindex="0" aria-label="Sleep timer, up to 4 hours" aria-valuemin="0" aria-valuemax="240" aria-valuenow="0">
+              <svg id="dialSvg" viewBox="0 0 280 280" aria-hidden="true">
+                <path class="hr" fill="#2A2A2D"></path><path class="hr" fill="#303034"></path><path class="hr" fill="#2A2A2D"></path><path class="hr" fill="#303034"></path>
+                <path id="dialFill" fill="#0A84FF"></path>
+              </svg>
+              <div class="dial-center">
+                <div class="dial-time" aria-hidden="true"><span class="roll" id="dH"></span><span>:</span><span class="roll" id="dM"></span><span class="dial-secs" id="dSecWrap" hidden><span>:</span><span class="roll" id="dS"></span></span></div>
+                <div class="dial-sub" id="dialSub"></div>
+              </div>
+            </div>
+            <div class="sleep-foot" id="sleepAction"></div>
+          </div>
+        </div>
+
+        <div class="toast" id="toast" role="status"><div class="tip-body"><span class="dot"></span><span id="toastText"></span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const BLUE = '#0A84FF';
+
+  const SPEAKERS = [
+    { id: 'tv', label: 'TV speakers', icon: 'tv' },
+    { id: 'soundbar', label: 'Soundbar', icon: 'soundbar' },
+    { id: 'bt', label: 'Headphones', icon: 'headphones' },
+    { id: 'optical', label: 'Receiver', icon: 'receiver' },
+  ];
+  // Logo artwork: Simple Icons (CC0). The logos are trademarks of their owners.
+  const APPS = [
+    { name: "Netflix", bg: "#000000", fg: "#E50914", size: 30, d: "M5.398 0v.006c3.028 8.556 5.37 15.175 8.348 23.596 2.344.058 4.85.398 4.854.398-2.8-7.924-5.923-16.747-8.487-24zm8.489 0v9.63L18.6 22.951c-.043-7.86-.004-15.913.002-22.95zM5.398 1.05V24c1.873-.225 2.81-.312 4.715-.398v-9.22z" },
+    { name: "YouTube", bg: "#FFFFFF", fg: "#FF0000", size: 36, d: "M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" },
+    { name: "Prime Video", bg: "#00A8E1", fg: "#FFFFFF", size: 44, d: "M0 9.508c0-.043.01-.073.028-.09.018-.017.047-.025.086-.025h.329c.07 0 .112.034.127.101l.032.119c.091-.088.202-.159.33-.21a1.04 1.04 0 0 1 .396-.079c.294 0 .528.109.7.326.171.217.257.51.257.88 0 .254-.042.475-.127.665-.086.19-.201.335-.347.437a.85.85 0 0 1-.502.154c-.125 0-.243-.02-.355-.06a.857.857 0 0 1-.288-.164v1.003c0 .043-.008.073-.025.09-.017.016-.046.025-.09.025H.115c-.04 0-.068-.009-.086-.025-.019-.017-.028-.047-.028-.09zm1.113.32a.868.868 0 0 0-.447.124v1.206a.834.834 0 0 0 .447.124c.17 0 .296-.058.376-.174.081-.117.121-.3.121-.55 0-.254-.04-.439-.118-.555-.08-.116-.206-.174-.379-.174zm2.248-.087c.121-.134.236-.23.344-.286a.733.733 0 0 1 .345-.085h.063c.043 0 .073.009.092.025.018.017.027.047.027.09v.385c0 .04-.008.068-.025.087-.017.018-.046.027-.089.027a.923.923 0 0 1-.082-.004 1.369 1.369 0 0 0-.383.025c-.1.02-.186.045-.256.076v1.54c0 .04-.008.069-.025.087-.016.018-.046.028-.089.028h-.437c-.04 0-.069-.01-.087-.028-.018-.018-.028-.047-.028-.087V9.508c0-.043.01-.073.028-.09.018-.017.047-.025.087-.025h.328c.07 0 .112.034.128.1zm1.526-.71a.396.396 0 0 1-.278-.096.338.338 0 0 1-.105-.262c0-.11.035-.197.105-.26a.395.395 0 0 1 .278-.097c.116 0 .208.032.278.096.07.064.105.151.105.261a.34.34 0 0 1-.105.262.396.396 0 0 1-.278.096zm-.333.477c0-.043.01-.073.027-.09.019-.017.048-.025.087-.025h.438c.043 0 .072.008.089.025s.025.047.025.09v2.113c0 .04-.008.069-.025.087-.017.018-.046.028-.09.028h-.437c-.04 0-.068-.01-.087-.028-.018-.018-.027-.047-.027-.087zm1.837.11c.161-.107.306-.183.435-.227.13-.045.263-.067.4-.067.273 0 .466.098.579.294.155-.104.3-.18.438-.225.137-.046.278-.069.424-.069.213 0 .377.06.495.179.117.12.175.286.175.5v1.618c0 .04-.008.069-.025.087-.017.019-.046.027-.089.027h-.438c-.04 0-.068-.008-.086-.027-.018-.018-.028-.047-.028-.087V10.15c0-.208-.092-.312-.278-.312-.164 0-.33.04-.497.119v1.664c0 .04-.008.069-.025.087-.017.019-.046.027-.09.027h-.437c-.04 0-.068-.008-.086-.027-.019-.018-.028-.047-.028-.087V10.15c0-.208-.093-.312-.278-.312-.17 0-.337.04-.502.123v1.66c0 .04-.008.069-.025.087-.017.019-.046.027-.089.027h-.438c-.039 0-.068-.008-.086-.027-.018-.018-.027-.047-.027-.087V9.508c0-.043.009-.073.027-.09.018-.017.047-.025.086-.025h.329c.07 0 .112.034.128.101zm4.387 1.16a1.81 1.81 0 0 1-.451-.05c.018.204.08.35.185.44.105.088.263.132.476.132.085 0 .168-.005.249-.016a3.08 3.08 0 0 0 .362-.078.143.143 0 0 1 .023-.002c.052 0 .078.035.078.105v.211c0 .049-.007.083-.02.103a.169.169 0 0 1-.08.053 1.953 1.953 0 0 1-.708.128c-.377 0-.666-.103-.868-.312-.203-.207-.304-.505-.304-.893 0-.398.104-.71.31-.935.207-.227.494-.34.862-.34.283 0 .504.069.664.206a.69.69 0 0 1 .24.55c0 .23-.087.403-.258.52-.172.119-.425.177-.76.177zm.064-.99c-.292 0-.46.18-.506.54.122.025.257.037.406.037.155 0 .267-.024.337-.071.07-.047.105-.12.105-.218 0-.193-.114-.289-.342-.289zm2.948 1.946a.21.21 0 0 1-.075-.011.119.119 0 0 1-.05-.037.274.274 0 0 1-.038-.071l-.777-2.04a1.863 1.863 0 0 1-.023-.063.162.162 0 0 1-.009-.05c0-.047.03-.07.091-.07h.454c.049 0 .084.01.107.028.023.018.04.049.052.092l.468 1.622.477-1.622a.175.175 0 0 1 .052-.092c.023-.018.058-.027.107-.027h.44c.061 0 .091.022.091.068a.16.16 0 0 1-.009.05l-.022.065-.777 2.039a.274.274 0 0 1-.039.07.122.122 0 0 1-.047.038.207.207 0 0 1-.078.01zm2.02-2.703a.393.393 0 0 1-.277-.097.338.338 0 0 1-.105-.26c0-.11.035-.198.105-.262a.393.393 0 0 1 .277-.096c.115 0 .207.032.277.096.07.064.104.151.104.261 0 .11-.034.197-.104.261a.393.393 0 0 1-.277.097zm-.218 2.703c-.04 0-.068-.01-.086-.028-.019-.018-.028-.047-.028-.087V9.507c0-.043.01-.072.028-.09.018-.016.047-.024.086-.024h.436c.042 0 .072.008.089.025.016.017.024.046.024.09v2.111c0 .04-.008.07-.024.087-.017.019-.047.028-.09.028zm1.948.05a.869.869 0 0 1-.513-.153.97.97 0 0 1-.334-.426 1.6 1.6 0 0 1-.116-.63c0-.38.09-.682.268-.91a.856.856 0 0 1 .709-.341.98.98 0 0 1 .622.206V8.458c0-.043.01-.073.027-.09.018-.016.047-.025.087-.025h.436c.042 0 .071.009.088.025.017.017.025.047.025.09v3.161c0 .04-.008.07-.025.087-.017.019-.046.028-.088.028h-.364a.135.135 0 0 1-.084-.023.137.137 0 0 1-.043-.078l-.027-.105a.958.958 0 0 1-.668.256zm.218-.504a.762.762 0 0 0 .418-.128v-1.21a.872.872 0 0 0-.45-.114c-.16 0-.28.06-.358.18-.08.121-.118.304-.118.548 0 .245.041.426.124.546.084.119.212.178.384.178zm2.588-.51c-.169 0-.315-.016-.44-.05.018.201.078.345.18.432.103.087.257.13.465.13.083 0 .164-.005.242-.016a2.997 2.997 0 0 0 .354-.076.135.135 0 0 1 .022-.002c.05 0 .075.035.075.103v.207c0 .048-.007.082-.02.101a.165.165 0 0 1-.077.052 1.895 1.895 0 0 1-.69.126c-.367 0-.65-.102-.846-.306-.197-.204-.296-.496-.296-.876 0-.39.1-.695.302-.917.202-.222.482-.333.84-.333.276 0 .492.068.647.203a.678.678 0 0 1 .234.539c0 .225-.084.395-.251.51-.168.115-.415.173-.74.173zm.063-.97c-.285 0-.45.176-.494.53.119.024.25.036.396.036.15 0 .26-.024.329-.07.068-.046.102-.117.102-.213 0-.19-.111-.284-.333-.284zm2.442 2.003c-.36 0-.642-.11-.845-.328-.203-.218-.304-.523-.304-.914 0-.388.101-.691.304-.91.203-.218.485-.327.845-.327s.642.109.845.327c.203.219.304.522.304.91 0 .39-.101.696-.304.914-.203.218-.485.328-.845.328zm0-.514c.318 0 .477-.242.477-.728 0-.483-.16-.724-.477-.724-.318 0-.477.241-.477.724 0 .486.16.728.477.728zm-6.844 1.886c.405-.306.944-.408 1.39-.408.418 0 .756.09.828.185.15.2-.039 1.584-.775 2.244-.112.102-.22.047-.17-.087.166-.442.536-1.436.36-1.677-.175-.242-1.158-.115-1.6-.058-.068.008-.107-.02-.112-.061v-.023c.004-.036.03-.078.079-.115zm-10.184-.172a.105.105 0 0 1 .106-.091c.027 0 .057.009.089.028a11.778 11.778 0 0 0 6.194 1.772c1.52 0 3.19-.34 4.726-1.043.232-.105.426.164.2.346-1.371 1.09-3.359 1.67-5.07 1.67-2.397 0-4.557-.956-6.191-2.547a.173.173 0 0 1-.054-.097Z" },
+    { name: "HBO Max", bg: "#000000", fg: "#FFFFFF", size: 46, d: "M7.042 16.896H4.414v-3.754H2.708v3.754H.01L0 7.22h2.708v3.6h1.706v-3.6h2.628zm12.043.046C21.795 16.94 24 14.689 24 11.978a4.89 4.89 0 0 0-4.915-4.92c-2.707-.002-4.09 1.991-4.432 2.795.003-1.207-1.187-2.632-2.58-2.634H7.59v9.674l4.181.001c1.686 0 2.886-1.46 2.888-2.713.385.788 1.72 2.762 4.427 2.76zm-7.665-3.936c.387 0 .692.382.692.817 0 .435-.305.817-.692.817h-1.33v-1.634zm.005-3.633c.387 0 .692.382.692.817 0 .436-.305.818-.692.818h-1.33V9.373zm1.77 2.607c.305-.039.813-.387.992-.61-.063.276-.068 1.074.006 1.35-.204-.314-.688-.701-.998-.74zm3.43 0a2.462 2.462 0 1 1 4.924 0 2.462 2.462 0 0 1-4.925 0zm2.462 1.936a1.936 1.936 0 1 0 0-3.872 1.936 1.936 0 0 0 0 3.872Z" },
+    { name: "Apple TV", bg: "#000000", fg: "#FFFFFF", size: 38, d: "M20.57 17.735h-1.815l-3.34-9.203h1.633l2.02 5.987c.075.231.273.9.586 2.012l.297-.997.33-1.006 2.094-6.004H24zm-5.344-.066a5.76 5.76 0 0 1-1.55.207c-1.23 0-1.84-.693-1.84-2.087V9.646h-1.063V8.532h1.121V7.081l1.476-.602v2.062h1.707v1.113H13.38v5.805c0 .446.074.75.214.932.14.182.396.264.75.264.207 0 .495-.041.883-.115zm-7.29-5.343c.017 1.764 1.55 2.358 1.567 2.366-.017.042-.248.842-.808 1.658-.487.71-.99 1.418-1.79 1.435-.783.016-1.03-.462-1.93-.462-.89 0-1.17.445-1.913.478-.758.025-1.344-.775-1.838-1.484-.998-1.451-1.765-4.098-.734-5.88.51-.89 1.426-1.451 2.416-1.46.75-.016 1.468.512 1.93.512.461 0 1.327-.627 2.234-.536.38.016 1.452.157 2.136 1.154-.058.033-1.278.743-1.27 2.219M6.468 7.988c.404-.495.685-1.18.61-1.864-.585.025-1.294.388-1.723.883-.38.437-.71 1.138-.619 1.806.652.05 1.328-.338 1.732-.825Z" },
+    { name: "Spotify", bg: "#000000", fg: "#1ED760", size: 36, d: "M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" },
+    { name: "Paramount+", bg: "#0064FF", fg: "#FFFFFF", size: 38, d: "M16.347 21.373c.057-.084.151-.314-.025-.74l-.53-1.428c-.073-.182.084-.293.19-.173 0 0 1.004 1.157 1.264 1.64l.495.822c.425.028 1.6.06 2.732.06a3.26 3.26 0 0 1-.316-.364c-1.93-2.392-3.154-3.724-3.166-3.737-.391-.426-.572-.508-.87-.643a4.82 4.82 0 0 1-.138-.065v.364c0 .047-.057.073-.086.022l-2.846-5.001a1.598 1.598 0 0 0-.508-.587l-.277-.194-1.354 3.123c.212 0 .354.216.27.409l-1.25 2.893h1.147c.443 0 .883.087 1.294.255l.302.125s-.913 1.878-.913 2.867c0 .181.028.362.075.534h2.104l-.096-.595s1.266.294 2.502.413M12 2.437c-6.627 0-12 5.373-12 12 0 2.669.873 5.133 2.346 7.126.503-.218.783-.542.983-.791l2.234-2.858a.467.467 0 0 1 .179-.138l.336-.146 3.674-4.659.534-.417 1.094-1.524a.482.482 0 0 1 .101-.102l.478-.347a.34.34 0 0 1 .398-.004l.578.407c.308.216.557.504.726.84l2.322 4.077c.051.09.09.129.182.174.454.227.732.268 1.33.913.277.304 1.495 1.666 3.203 3.784.236.318.538.588.963.783A11.948 11.948 0 0 0 24 14.437c0-6.627-5.373-12-12-12M3.236 15.1l-.778-.253-.48.662v-.818l-.778-.253.778-.253v-.818l.48.662.778-.253-.48.662Zm-.185 2.676-.252.778-.253-.778h-.818l.661-.481-.253-.777.663.48.66-.48-.252.777.662.481Zm.156-6.195.253.778-.661-.48-.663.48.253-.778-.66-.48h.817l.253-.778.252.777h.818Zm1.314-1.76L4.04 9.16l-.778.253.48-.661-.48-.663.778.254.48-.662v.818l.778.253-.777.252Zm2.045-2.862-.253.777-.252-.777h-.818l.662-.48-.253-.778.661.48.661-.48-.252.777.662.48Zm2.577-1.313-.48.661V5.49l-.779-.254.778-.253v-.817l.48.66.78-.253-.481.663.48.66zm3.265-.75.253.778-.661-.48-.662.48.252-.777-.66-.481h.818L12 3.637l.252.778h.818zm2.93.595v.816l-.481-.661-.777.252.48-.662-.48-.662.777.253.48-.66v.817l.779.252zm5.426 8.285.778.253.48-.662v.818l.778.253-.778.253v.818l-.48-.662-.778.253.48-.662zm-3.077-6.04-.253-.777h-.818l.662-.48-.253-.778.662.48.662-.48-.254.778.662.48h-.818zm1.792 2.086v-.818l-.777-.252.777-.253V7.68l.481.662.777-.254-.48.663.48.66-.777-.252zm1.469 1.278.253-.777.254.777h.816l-.66.481.252.778-.662-.48-.661.48.253-.778-.662-.48zm.506 6.676-.253.778-.253-.778h-.817l.662-.481-.253-.777.66.48.663-.48-.253.777.661.481zm-12.08-.615.76-1.588c.024-.048-.032-.108-.067-.067l-.664.668c-.313.329-.847 1.25-.95 1.421l-.808 1.335a.109.109 0 0 1 .1.162l-.739 1.238c-.18.309.145.523.189.452 1.157-1.868 1.832-1.719 1.832-1.719l.387-.897c.022-.047-.001-.1-.05-.12-.12-.05-.316-.27.01-.885z" },
+    { name: "LG Channels", bg: "#A50034", fg: "#FFFFFF", size: 34, d: "M14.522 14.078h3.27v1.33h-4.847v-6.83h1.577v5.5zm6.74-1.274h1.284v1.195c-.236.09-.698.18-1.137.18-1.42 0-1.893-.721-1.893-2.186 0-1.398.45-2.221 1.869-2.221.791 0 1.24.248 1.612.722l.982-.903c-.6-.855-1.646-1.114-2.629-1.114-2.208 0-3.368 1.205-3.368 3.504 0 2.288 1.047 3.528 3.358 3.528 1.06 0 2.096-.27 2.66-.665V11.53h-2.739v1.274zM5.291 6.709a5.29 5.29 0 1 1 0 10.582 5.291 5.291 0 1 1 0-10.582m3.16 8.457a4.445 4.445 0 0 0 1.31-3.161v-.242l-.22.001H6.596v.494h2.662l-.001.015a3.985 3.985 0 0 1-3.965 3.708 3.95 3.95 0 0 1-2.811-1.165 3.952 3.952 0 0 1-1.164-2.811c0-1.061.414-2.059 1.164-2.81a3.951 3.951 0 0 1 2.81-1.164l.252.003v-.495l-.251-.003a4.475 4.475 0 0 0-4.47 4.469c0 1.194.465 2.316 1.309 3.161a4.444 4.444 0 0 0 3.16 1.31 4.444 4.444 0 0 0 3.162-1.31m-2.91-1.297V9.644H5.04v4.72h1.556v-.495H5.543zm-1.265-3.552a.676.676 0 1 0-.675.674.676.676 0 0 0 .675-.674" },
+  ];
+  const tvs = [
+    { id: 'living', name: 'Living room', model: 'OLED 65″', on: true, volume: 18, muted: false, speaker: 'soundbar', app: 'Netflix', sleepMin: 0, sleepEnd: null },
+    { id: 'bedroom', name: 'Bedroom', model: 'OLED 48″', on: false, volume: 12, muted: false, speaker: 'tv', app: null, sleepMin: 0, sleepEnd: null },
+    { id: 'basement', name: 'Basement', model: 'QNED 75″', on: true, volume: 30, muted: false, speaker: 'bt', app: 'YouTube', sleepMin: 0, sleepEnd: null },
+  ];
+  let cur = 0;
+  const tv = () => tvs[cur];
+
+  const fmtMin = (m) => (m >= 60 ? (m % 60 ? Math.floor(m / 60) + ' hr ' + (m % 60) + ' min' : m / 60 + ' hr') : m + ' min');
+  const clock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const minsLeft = (t) => Math.max(1, Math.ceil((t.sleepEnd - Date.now()) / 60000));
+  const status = (t) => (!t.on ? 'Off' : t.sleepEnd ? 'Sleeping in ' + fmtMin(minsLeft(t)) : t.app ? 'Watching ' + t.app : 'On');
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  function morphText(el, text) {
+    if (el.textContent === text) return;
+    el.textContent = text;
+    el.classList.remove('morph');
+    void el.offsetWidth;
+    el.classList.add('morph');
+  }
+
+  // Odometer digits: one column of 0–9 per digit, slid into place.
+  function roll(el, n) {
+    const str = String(n);
+    let added = false;
+    while (el.children.length < str.length) {
+      const col = document.createElement('span');
+      col.className = 'col';
+      const stack = document.createElement('span');
+      stack.className = 'stack';
+      for (let i = 0; i < 10; i++) { const d = document.createElement('span'); d.textContent = i; stack.appendChild(d); }
+      col.appendChild(stack);
+      el.insertBefore(col, el.firstChild);
+      added = true;
+    }
+    while (el.children.length > str.length) el.removeChild(el.firstChild);
+    if (added) void el.offsetWidth;
+    Array.from(el.children).forEach((col, i) => { col.firstChild.style.transform = `translateY(${-1.25 * Number(str[i])}em)`; });
+  }
+
+  // ---------- Springs ----------
+  const springs = [];
+  const drawers = [];
+  const spring = (v, k, c) => { const s = { v, t: v, vel: 0, k: k || 300, c: c || 24 }; springs.push(s); return s; };
+  let raf = null;
+  function kick() {
+    if (raf) return;
+    if (reduced) { springs.forEach((s) => { s.v = s.t; s.vel = 0; }); drawers.forEach((d) => d()); return; }
+    let last = performance.now();
+    const step = (now) => {
+      const dt = Math.min(0.032, (now - last) / 1000);
+      last = now;
+      let moving = false;
+      for (const s of springs) {
+        if (s.v === s.t && s.vel === 0) continue;
+        const a = s.k * (s.t - s.v) - s.c * s.vel;
+        s.vel += a * dt;
+        s.v += s.vel * dt;
+        if (Math.abs(s.t - s.v) < 0.04 && Math.abs(s.vel) < 0.04) { s.v = s.t; s.vel = 0; } else moving = true;
+      }
+      drawers.forEach((d) => d());
+      raf = moving ? requestAnimationFrame(step) : null;
+    };
+    raf = requestAnimationFrame(step);
+  }
+
+  // ---------- Capsule geometry ----------
+  // Flat bottom, a top edge lifted by lift(x), and rounded caps where the bar ends.
+  const TOP = 24, BOT = 54, R = 15;
+  const f2 = (n) => Math.round(n * 100) / 100;
+  const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const plateau = (x, x0, x1) => smooth(x0 - 14, x0 + 14, x) * (1 - smooth(x1 - 14, x1 + 14, x));
+  function segPath(x0, x1, lift, capL, capR) {
+    const w = x1 - x0;
+    if (w < 0.5) return '';
+    const y = (x) => f2(TOP - lift(x));
+    const rl = capL ? Math.min(R, w / (capR ? 2 : 1)) : 0;
+    const rr = capR ? Math.min(R, w - rl) : 0;
+    const a = x0 + rl, b = x1 - rr;
+    let d = capL ? `M${f2(a)} ${BOT} C${f2(x0)} ${BOT} ${f2(x0)} ${y(a)} ${f2(a)} ${y(a)}` : `M${f2(x0)} ${BOT} L${f2(x0)} ${y(x0)}`;
+    for (let x = Math.ceil((a + 0.01) / 3) * 3; x < b; x += 3) d += ` L${x} ${y(x)}`;
+    d += ` L${f2(b)} ${y(b)}`;
+    d += capR ? ` C${f2(x1)} ${y(b)} ${f2(x1)} ${BOT} ${f2(b)} ${BOT}` : ` L${f2(x1)} ${BOT}`;
+    return d + ' Z';
+  }
+  const localX = (el, e, W) => { const r = el.getBoundingClientRect(); return clamp(((e.clientX - r.left) * W) / (r.width || W), 0, W); };
+
+  // ---------- Volume ----------
+  const volBar = $('volBar'), volSvg = $('volSvg'), volTip = $('volTip');
+  let VW = 318, vCx = 0, dragging = false, pulseTimer = null, tipTimer = null;
+  const vAmp = spring(0, 260, 18);
+  const vX = spring(0, 520, 42);
+  function drawVol() {
+    const lift = (x) => vAmp.v * Math.exp(-Math.pow((x - vCx) / 34, 2));
+    $('volTrack').setAttribute('d', segPath(0, VW, lift, true, true));
+    $('volFill').setAttribute('d', segPath(0, Math.max(0, vX.v), lift, true, true));
+  }
+  drawers.push(drawVol);
+  function placeVolTip(x) { volTip.style.left = f2(clamp(x, 46, VW - 46)) + 'px'; }
+  function showVolTip(on) { clearTimeout(tipTimer); if (on) volTip.classList.add('show'); else tipTimer = setTimeout(() => volTip.classList.remove('show'), 180); }
+
+  // Only touch the DOM for what actually changed, so dragging stays cheap.
+  let shownVol = null, shownMuted = null, shownOut = null;
+  function renderVolume() {
+    const t = tv();
+    if (t.volume !== shownVol) {
+      roll($('volRoll'), t.volume);
+      $('volTipVal').textContent = t.volume;
+      volBar.setAttribute('aria-valuenow', t.volume);
+      shownVol = t.volume;
+    }
+    if (t.muted !== shownMuted) {
+      $('volRoll').style.color = t.muted ? '#5E5E63' : '';
+      $('volFill').setAttribute('fill', t.muted ? '#4A4A4E' : BLUE);
+      const mb = $('muteBtn');
+      mb.setAttribute('aria-pressed', String(t.muted));
+      mb.setAttribute('aria-label', t.muted ? 'Unmute' : 'Mute');
+      $('muteIcon').innerHTML = t.muted
+        ? '<path d="M4 9v6h4l5 4V5L8 9H4z"></path><path d="M17 9l4 6"></path><path d="M21 9l-4 6"></path>'
+        : '<path d="M4 9v6h4l5 4V5L8 9H4z"></path><path d="M16.5 8.5a5 5 0 0 1 0 7"></path>';
+      shownMuted = t.muted;
+    }
+    volBar.setAttribute('aria-valuetext', t.muted ? t.volume + ', muted' : String(t.volume));
+    if (!dragging) { vX.t = (t.volume / 100) * VW; kick(); }
+  }
+  function setVolume(v) {
+    const t = tv();
+    t.volume = Math.round(clamp(v, 0, 100));
+    t.muted = false;
+    renderVolume();
+  }
+  // A quick swell at the end of the fill when − / + or the keyboard changes the level.
+  function pulse() {
+    vCx = vX.t;
+    vAmp.t = 8;
+    placeVolTip(vCx);
+    showVolTip(true);
+    clearTimeout(pulseTimer);
+    pulseTimer = setTimeout(() => { vAmp.t = 0; showVolTip(false); kick(); }, 650);
+    kick();
+  }
+  // Dragging: the fill and the bulge follow the finger 1:1, drawn once per frame.
+  let volRect = null, pendingX = null, moveRaf = null;
+  const volXFrom = (e) => {
+    const r = volRect || volBar.getBoundingClientRect();
+    return clamp(((e.clientX - r.left) * VW) / (r.width || VW), 0, VW);
+  };
+  function applyDrag(x) {
+    vCx = x;
+    const t = tv();
+    const v = Math.round((x / VW) * 100);
+    if (v !== t.volume || t.muted) { t.volume = v; t.muted = false; renderVolume(); }
+    vX.v = vX.t = x;
+    vX.vel = 0;
+    placeVolTip(x);
+    drawVol();
+    kick();
+  }
+  volBar.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (volBar.setPointerCapture) volBar.setPointerCapture(e.pointerId);
+    volRect = volBar.getBoundingClientRect();
+    dragging = true;
+    clearTimeout(pulseTimer);
+    $('volRoll').classList.add('fast');
+    vAmp.t = 12;
+    applyDrag(volXFrom(e));
+    showVolTip(true);
+  });
+  volBar.addEventListener('pointermove', (e) => {
+    if (dragging) {
+      pendingX = volXFrom(e);
+      if (!moveRaf) moveRaf = requestAnimationFrame(() => { moveRaf = null; if (dragging) applyDrag(pendingX); });
+    } else if (e.pointerType === 'mouse') {
+      vCx = volXFrom(e);
+      vAmp.t = 5;
+      drawVol();
+      kick();
+    }
+  });
+  const endDrag = () => {
+    if (!dragging) return;
+    dragging = false;
+    volRect = null;
+    $('volRoll').classList.remove('fast');
+    vAmp.t = 0;
+    vX.t = (tv().volume / 100) * VW;
+    showVolTip(false);
+    kick();
+  };
+  volBar.addEventListener('pointerup', endDrag);
+  volBar.addEventListener('pointercancel', endDrag);
+  volBar.addEventListener('lostpointercapture', endDrag);
+  volBar.addEventListener('pointerleave', () => { if (!dragging) { vAmp.t = 0; kick(); } });
+  volBar.addEventListener('keydown', (e) => {
+    const step = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 10, PageDown: -10 }[e.key];
+    if (step) { e.preventDefault(); setVolume(tv().volume + step); pulse(); }
+    else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); setVolume(e.key === 'Home' ? 0 : 100); pulse(); }
+  });
+  // Hold − or + to keep stepping.
+  function holdable(btn, fn) {
+    let t1, t2;
+    const stop = () => { clearTimeout(t1); clearInterval(t2); };
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (btn.setPointerCapture) btn.setPointerCapture(e.pointerId);
+      stop();
+      fn();
+      t1 = setTimeout(() => { t2 = setInterval(fn, 80); }, 400);
+    });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => btn.addEventListener(ev, stop));
+    // Keyboard presses arrive as clicks with no pointer behind them.
+    btn.addEventListener('click', (e) => { if (e.detail === 0) fn(); });
+  }
+  holdable($('volDown'), () => { setVolume(tv().volume - 1); pulse(); });
+  holdable($('volUp'), () => { setVolume(tv().volume + 1); pulse(); });
+  $('muteBtn').addEventListener('click', () => { tv().muted = !tv().muted; renderVolume(); });
+
+  // ---------- Toast ----------
+  let toastTimer = null;
+  function toast(msg) {
+    const el = $('toast');
+    $('toastText').textContent = msg;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  // ---------- Favorites ----------
+  const appsEl = $('apps');
+  let appTimer = null;
+  APPS.forEach((a) => {
+    const name = a.name;
+    const b = document.createElement('button');
+    b.className = 'app-btn';
+    b.setAttribute('aria-label', 'Open ' + name);
+    b.innerHTML = `<span class="app-icon" style="background: ${a.bg}"><svg viewBox="0 0 24 24" width="${a.size}" height="${a.size}" aria-hidden="true"><path fill="${a.fg}" d="${a.d}"></path></svg></span>`;
+    b.addEventListener('click', () => {
+      clearTimeout(appTimer);
+      appsEl.querySelectorAll('.app-tip').forEach((n) => n.remove());
+      appsEl.querySelectorAll('.pressed').forEach((n) => n.classList.remove('pressed'));
+      appsEl.classList.add('pressing');
+      b.classList.add('pressed');
+      const tip = document.createElement('span');
+      tip.className = 'tip app-tip';
+      tip.innerHTML = '<span class="tip-body"><span class="dot"></span><span>Opening</span></span>';
+      b.appendChild(tip);
+      requestAnimationFrame(() => tip.classList.add('show'));
+      appTimer = setTimeout(() => {
+        tip.classList.remove('show');
+        setTimeout(() => tip.remove(), 240);
+        b.classList.remove('pressed');
+        appsEl.classList.remove('pressing');
+        tv().app = name;
+        renderAll();
+      }, 1100);
+    });
+    b.dataset.name = name;
+    appsEl.appendChild(b);
+  });
+
+  // ---------- Sheet ----------
+  const app = $('app'), sheet = $('sheet'), scrim = $('scrim'), tools = $('tools');
+  let sheetKind = null, opener = null;
+  const SHEETS = {
+    tvs: 'Your TVs',
+    speaker: 'Sound out',
+    sleep: 'Sleep timer',
+  };
+  function openSheet(kind, from) {
+    sheetKind = kind;
+    opener = from || null;
+    sheet.dataset.kind = kind;
+    $('sheetTitle').textContent = SHEETS[kind];
+    renderSheet();
+    sheet.style.transform = '';
+    sheet.classList.add('open');
+    scrim.classList.add('open');
+    tools.inert = true;
+    $('offPanel').inert = true;
+    document.querySelector('.top').inert = true;
+    if (kind === 'sleep') {
+      // Opening the dial winds it up from zero to the time that's left.
+      dFill.v = 0; dFill.vel = 0; dFill.t = remainingMs() / 60000;
+      dAmp.vel = 70;
+      shownKey = '';
+      renderDialText();
+      requestAnimationFrame(() => { drawDial(); kick(); });
+    }
+    setTimeout(() => $('sheetClose').focus({ preventScroll: true }), 60);
+  }
+  function closeSheet() {
+    if (!sheetKind) return;
+    sheetLocked = false;
+    sheetKind = null;
+    sheet.style.transform = '';
+    sheet.classList.remove('open', 'dragging');
+    scrim.classList.remove('open');
+    tools.inert = false;
+    $('offPanel').inert = false;
+    document.querySelector('.top').inert = false;
+    if (opener) opener.focus({ preventScroll: true });
+  }
+  scrim.addEventListener('click', closeSheet);
+  $('sheetClose').addEventListener('click', closeSheet);
+  sheet.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+  // Drag the sheet down to dismiss it.
+  (() => {
+    const zone = $('grabZone');
+    let y0 = null, dy = 0;
+    zone.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button')) return;
+      y0 = e.clientY; dy = 0;
+      zone.setPointerCapture(e.pointerId);
+      sheet.classList.add('dragging');
+    });
+    zone.addEventListener('pointermove', (e) => {
+      if (y0 == null) return;
+      const s = parseFloat(getComputedStyle($('fit')).getPropertyValue('--s')) || 1;
+      dy = Math.max(0, (e.clientY - y0) / s);
+      sheet.style.transform = `translateY(${dy}px)`;
+    });
+    const end = () => {
+      if (y0 == null) return;
+      y0 = null;
+      sheet.classList.remove('dragging');
+      if (dy > 90) closeSheet(); else sheet.style.transform = '';
+    };
+    zone.addEventListener('pointerup', end);
+    zone.addEventListener('pointercancel', end);
+  })();
+
+  // ---------- Pickers: TVs and Sound out share one row design ----------
+  // Row = icon tile, name, detail line, and a 46px slot on the right (a power button for TVs, a radio for outputs).
+  const ICONS = {
+    tv: '<rect x="3" y="5" width="18" height="12" rx="2"></rect><path d="M8 21h8"></path>',
+    soundbar: '<rect x="2" y="9" width="20" height="6" rx="3"></rect><path d="M6.5 12h.01"></path><path d="M10.5 12h.01"></path><path d="M14.5 12h.01"></path><path d="M18.5 12h.01"></path>',
+    headphones: '<path d="M4 15v-3a8 8 0 0 1 16 0v3"></path><rect x="3" y="14" width="4.5" height="7" rx="1.5"></rect><rect x="16.5" y="14" width="4.5" height="7" rx="1.5"></rect>',
+    receiver: '<rect x="3" y="7" width="18" height="10" rx="2"></rect><circle cx="8" cy="12" r="2"></circle><path d="M13 11h5"></path><path d="M13 14h3"></path>',
+  };
+  const POWER_SVG = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"></path><path d="M6.3 6.8a8 8 0 1 0 11.4 0"></path></svg>';
+  const RADIO = '<span class="choice-end" aria-hidden="true"><span class="radio"><svg class="ic" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"></path></svg></span></span>';
+  let sheetLocked = false;
+
+  function choiceRow({ icon, title, sub, selected, radio }) {
+    const row = document.createElement('div');
+    row.className = 'choice' + (selected ? ' selected' : '');
+    row.innerHTML = `<button class="choice-pick" aria-pressed="${selected}"><span class="choice-icon"><svg class="ic ic-md" viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></span><span class="row-text"><span class="row-title">${title}</span>${sub ? `<span class="row-sub">${sub}</span>` : ''}</span>${radio ? RADIO : ''}</button>`;
+    return row;
+  }
+  // Same motion for both lists: the outline and icon move to the new row, then the sheet slides away.
+  function pickRow(list, row, apply) {
+    sheetLocked = true;
+    list.querySelectorAll('.choice').forEach((r) => {
+      const on = r === row;
+      r.classList.toggle('selected', on);
+      r.querySelector('.choice-pick').setAttribute('aria-pressed', String(on));
+    });
+    apply();
+    setTimeout(closeSheet, 300);
+  }
+  function addRow(label, onClick) {
+    const add = document.createElement('button');
+    add.className = 'add-row';
+    add.innerHTML = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>' + label;
+    add.addEventListener('click', onClick);
+    return add;
+  }
+
+  function renderTvList() {
+    const list = $('tvList');
+    list.innerHTML = '';
+    tvs.forEach((t, i) => {
+      const row = choiceRow({ icon: ICONS.tv, title: t.name, sub: status(t), selected: i === cur });
+      const power = document.createElement('button');
+      power.className = 'row-power';
+      const sync = () => {
+        power.setAttribute('aria-pressed', String(t.on));
+        power.setAttribute('aria-label', (t.on ? 'Turn off ' : 'Turn on ') + t.name);
+        row.querySelector('.row-sub').textContent = status(t);
+      };
+      power.innerHTML = POWER_SVG;
+      sync();
+      power.addEventListener('click', () => {
+        sheetLocked = true;
+        setPower(t, !t.on, true);
+        sheetLocked = false;
+        sync();
+      });
+      row.appendChild(power);
+      row.querySelector('.choice-pick').addEventListener('click', () => pickRow(list, row, () => switchTv(i)));
+      list.appendChild(row);
+    });
+    list.appendChild(addRow('Add a TV', () => toast('Looking for LG TVs on your Wi-Fi…')));
+  }
+
+  function renderOutList() {
+    const list = $('outList');
+    list.innerHTML = '';
+    SPEAKERS.forEach((s) => {
+      const row = choiceRow({ icon: ICONS[s.icon], title: s.label, selected: s.id === tv().speaker, radio: true });
+      row.querySelector('.choice-pick').addEventListener('click', () => pickRow(list, row, () => { tv().speaker = s.id; renderAll(); }));
+      list.appendChild(row);
+    });
+  }
+
+  // ---------- Sleep dial: wind it up to 4 hours, then it ticks back ----------
+  const MAX_MIN = 240, CX = 140, CY = 140, R_IN = 98, R_OUT = 124, TAU = Math.PI * 2;
+  const dial = $('dial');
+  const hrPaths = Array.from($('dialSvg').querySelectorAll('.hr'));
+  const dFill = spring(0, 190, 22);   // end of the blue arc, in minutes
+  const dAmp = spring(0, 260, 15);    // how far the ring swells at that end
+  let dialDrag = false, dialMin = 0, lastAng = 0, dialRect = null, dialRaf = null, pendingAng = null, shownKey = '';
+  let sleepUndo = null, sleepUndoTimer = null, lastSleepKey = '';
+  const snap = (m) => Math.round(m / 5) * 5;
+  const remainingMs = () => { const t = tv(); return t.sleepEnd ? Math.max(0, t.sleepEnd - Date.now()) : 0; };
+  const P = (r, a) => [CX + r * Math.sin(a), CY - r * Math.cos(a)];
+  const angDist = (a, b) => { const d = Math.abs(a - b) % TAU; return d > Math.PI ? TAU - d : d; };
+  // An arc of the ring from a0 to a1 (radians, clockwise from 12 o'clock) with round ends.
+  function arcPath(a0, a1, outer) {
+    if (a1 - a0 < 0.002) return '';
+    const n = Math.max(2, Math.ceil((a1 - a0) / 0.03));
+    let d = '';
+    for (let i = 0; i <= n; i++) {
+      const a = a0 + ((a1 - a0) * i) / n;
+      const [x, y] = P(outer(a), a);
+      d += (i ? ' L' : 'M') + f2(x) + ' ' + f2(y);
+    }
+    const re = (outer(a1) - R_IN) / 2;
+    const [ix, iy] = P(R_IN, a1);
+    d += ` A${f2(re)} ${f2(re)} 0 0 1 ${f2(ix)} ${f2(iy)}`;
+    for (let i = n - 1; i >= 0; i--) {
+      const a = a0 + ((a1 - a0) * i) / n;
+      const [x, y] = P(R_IN, a);
+      d += ` L${f2(x)} ${f2(y)}`;
+    }
+    const rs = (outer(a0) - R_IN) / 2;
+    const [ox, oy] = P(outer(a0), a0);
+    return d + ` A${f2(rs)} ${f2(rs)} 0 0 1 ${f2(ox)} ${f2(oy)} Z`;
+  }
+  function drawDial() {
+    if (sheetKind !== 'sleep') return;
+    const endA = (clamp(dFill.v, 0, MAX_MIN) / MAX_MIN) * TAU;
+    const outer = (a) => R_OUT + dAmp.v * Math.exp(-Math.pow(angDist(a, endA) / 0.36, 2));
+    const gap = 0.03;
+    hrPaths.forEach((p, i) => p.setAttribute('d', arcPath((i * TAU) / 4 + gap, ((i + 1) * TAU) / 4 - gap, outer)));
+    $('dialFill').setAttribute('d', dFill.v > 0.3 ? arcPath(0, Math.min(endA, TAU - 0.001), outer) : '');
+  }
+  drawers.push(drawDial);
+
+  function showTime(min, secs) {
+    roll($('dH'), String(Math.floor(min / 60)));
+    roll($('dM'), String(min % 60).padStart(2, '0'));
+    $('dSecWrap').hidden = secs == null;
+    if (secs != null) roll($('dS'), String(secs).padStart(2, '0'));
+  }
+  function renderDialText() {
+    const t = tv();
+    let key, sub, min, secs = null;
+    if (dialDrag) {
+      min = snap(dialMin);
+      sub = min ? 'Off at ' + clock(Date.now() + min * 60000) : '';
+    } else if (t.sleepEnd) {
+      const total = Math.ceil(remainingMs() / 1000);
+      min = Math.floor(total / 60);
+      secs = total % 60;
+      sub = 'Off at ' + clock(t.sleepEnd);
+    } else {
+      min = 0;
+      sub = '';
+    }
+    key = min + ':' + secs + ':' + sub;
+    if (key === shownKey) return;
+    shownKey = key;
+    showTime(min, secs);
+    $('dialSub').textContent = sub;
+    dial.setAttribute('aria-valuenow', String(min));
+    dial.setAttribute('aria-valuetext', min ? fmtMin(min) : 'Off');
+  }
+
+  function setSleepMinutes(m) {
+    const t = tv();
+    clearTimeout(sleepUndoTimer);
+    sleepUndo = null;
+    t.sleepMin = m;
+    t.sleepEnd = Date.now() + m * 60000;
+    renderAll();
+  }
+  function cancelSleep() {
+    const t = tv();
+    sleepUndo = { id: t.id, min: t.sleepMin, end: t.sleepEnd };
+    t.sleepMin = 0;
+    t.sleepEnd = null;
+    dAmp.vel += 120;
+    clearTimeout(sleepUndoTimer);
+    sleepUndoTimer = setTimeout(() => { sleepUndo = null; renderAll(); }, 5000);
+    renderAll();
+  }
+  function undoSleep() {
+    clearTimeout(sleepUndoTimer);
+    const t = tv();
+    if (sleepUndo && sleepUndo.id === t.id && sleepUndo.end > Date.now()) { t.sleepMin = sleepUndo.min; t.sleepEnd = sleepUndo.end; }
+    sleepUndo = null;
+    dAmp.vel += 120;
+    renderAll();
+  }
+
+  const angOf = (e) => {
+    const r = dialRect || dial.getBoundingClientRect();
+    let a = Math.atan2(e.clientX - (r.left + r.width / 2), -(e.clientY - (r.top + r.height / 2)));
+    if (a < 0) a += TAU;
+    return a;
+  };
+  function windTo(a) {
+    let d = a - lastAng;
+    if (d > Math.PI) d -= TAU; else if (d < -Math.PI) d += TAU;
+    lastAng = a;
+    const hourBefore = Math.floor(dialMin / 60);
+    dialMin = clamp(dialMin + (d / TAU) * MAX_MIN, 0, MAX_MIN);
+    if (Math.floor(dialMin / 60) !== hourBefore) dAmp.vel += 160; // a little kick at each hour
+    dFill.t = dialMin;
+    if (Math.abs(dFill.v - dFill.t) < 4) { dFill.v = dFill.t; dFill.vel = 0; }
+    renderDialText();
+    drawDial();
+    kick();
+  }
+  dial.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (dial.setPointerCapture) dial.setPointerCapture(e.pointerId);
+    dialRect = dial.getBoundingClientRect();
+    const a = angOf(e);
+    const cur = remainingMs() / 60000;
+    const tapped = (a / TAU) * MAX_MIN;
+    // Grabbing near 12 o'clock with a long timer keeps winding instead of jumping back to zero.
+    dialMin = cur > 200 && tapped < 40 ? cur : tapped;
+    lastAng = a;
+    dialDrag = true;
+    dFill.t = dialMin;
+    dAmp.t = 14;
+    shownKey = '';
+    renderDialText();
+    kick();
+  });
+  dial.addEventListener('pointermove', (e) => {
+    if (!dialDrag) return;
+    pendingAng = angOf(e);
+    if (!dialRaf) dialRaf = requestAnimationFrame(() => { dialRaf = null; if (dialDrag) windTo(pendingAng); });
+  });
+  const endDial = () => {
+    if (!dialDrag) return;
+    dialDrag = false;
+    dialRect = null;
+    dAmp.t = 0;
+    const m = snap(dialMin);
+    shownKey = '';
+    if (m > 0) setSleepMinutes(m);
+    else if (tv().sleepEnd) cancelSleep();
+    else renderAll();
+    kick();
+  };
+  dial.addEventListener('pointerup', endDial);
+  dial.addEventListener('pointercancel', endDial);
+  dial.addEventListener('lostpointercapture', endDial);
+  dial.addEventListener('keydown', (e) => {
+    const step = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5, PageUp: 30, PageDown: -30 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const m = clamp(snap(remainingMs() / 60000) + step, 0, MAX_MIN);
+    dAmp.vel += 90;
+    if (m > 0) setSleepMinutes(m); else if (tv().sleepEnd) cancelSleep();
+  });
+
+  function renderSleep() {
+    const t = tv();
+    if (!dialDrag) dFill.t = remainingMs() / 60000;
+    renderDialText();
+    const action = $('sleepAction');
+    const key = t.sleepEnd ? 'on' : sleepUndo ? 'undo' : 'idle';
+    if (lastSleepKey !== key) {
+      action.innerHTML = '';
+      if (key !== 'idle') {
+        const b = document.createElement('button');
+        b.className = 'pill morph';
+        b.innerHTML = key === 'on'
+          ? '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg>Cancel timer'
+          : '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg>Undo';
+        b.addEventListener('click', key === 'on' ? cancelSleep : undoSleep);
+        action.appendChild(b);
+      }
+      lastSleepKey = key;
+    }
+    kick();
+  }
+
+  // ---------- Power ----------
+  let offUndo = null, offUndoTimer = null;
+  function setPower(t, on, fromList) {
+    t.on = on;
+    if (!on) { t.app = null; t.sleepEnd = null; t.sleepMin = 0; }
+    clearTimeout(offUndoTimer);
+    if (!on && !fromList && t === tv()) {
+      offUndo = t.id;
+      offUndoTimer = setTimeout(() => { offUndo = null; renderOffUndo(); }, 5000);
+    } else offUndo = null;
+    renderAll();
+  }
+  function renderOffUndo() {
+    const box = $('offUndo');
+    box.innerHTML = '';
+    if (offUndo !== tv().id) return;
+    const b = document.createElement('button');
+    b.className = 'pill morph';
+    b.innerHTML = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg>Undo';
+    b.addEventListener('click', () => { offUndo = null; setPower(tv(), true); });
+    box.appendChild(b);
+  }
+  $('powerBtn').addEventListener('click', () => setPower(tv(), !tv().on));
+  $('wakeBtn').addEventListener('click', () => setPower(tv(), true));
+
+  function switchTv(i) {
+    if (i === cur) return;
+    cur = i;
+    offUndo = null;
+    sleepUndo = null;
+    lastSleepKey = '';
+    renderAll();
+  }
+
+  // ---------- Render ----------
+  function renderAll() {
+    const t = tv();
+    morphText($('tvName'), t.name);
+    morphText($('tvStatus'), status(t));
+    const pb = $('powerBtn');
+    pb.setAttribute('aria-pressed', String(t.on));
+    pb.setAttribute('aria-label', (t.on ? 'Turn off ' : 'Turn on ') + t.name);
+    app.classList.toggle('is-off', !t.on);
+    $('wakeBtn').setAttribute('aria-label', 'Turn on ' + t.name);
+    renderOffUndo();
+    renderVolume();
+    morphText($('soundVal'), SPEAKERS.find((s) => s.id === t.speaker).label);
+    morphText($('sleepVal'), t.sleepEnd ? fmtMin(minsLeft(t)) + ' left' : 'Off');
+    appsEl.querySelectorAll('.app-btn').forEach((b) => b.classList.toggle('current', b.dataset.name === t.app));
+    renderSleep();
+    if (sheetKind && !sheetLocked) renderSheet();
+  }
+  function renderSheet() {
+    if (sheetKind === 'tvs') renderTvList();
+    if (sheetKind === 'speaker') renderOutList();
+    if (sheetKind) {
+      $('sheetTitle').textContent = SHEETS[sheetKind];
+    }
+  }
+
+  $('tvBtn').addEventListener('click', (e) => openSheet('tvs', e.currentTarget));
+  $('soundTile').addEventListener('click', (e) => openSheet('speaker', e.currentTarget));
+  $('sleepTile').addEventListener('click', (e) => openSheet('sleep', e.currentTarget));
+
+  // ---------- Fit the device frame to the window ----------
+  function fit() {
+    const phone = window.matchMedia('(max-width: 500px)').matches;
+    const s = phone ? 1 : Math.min(1, (window.innerHeight - 76) / 866, (window.innerWidth - 32) / 412);
+    $('fit').style.setProperty('--s', f2(Math.max(0.5, s)));
+    VW = volBar.clientWidth || VW;
+    volSvg.setAttribute('viewBox', `0 0 ${VW} 60`);
+    vX.v = vX.t = (tv().volume / 100) * VW;
+    vX.vel = 0;
+    drawVol();
+  }
+  window.addEventListener('resize', fit);
+
+  // Tick once a second: the dial counts down live; the rest of the screen refreshes every 15 seconds.
+  let ticks = 0;
+  setInterval(() => {
+    ticks++;
+    let changed = false;
+    tvs.forEach((t) => { if (t.sleepEnd && t.sleepEnd <= Date.now()) { t.on = false; t.sleepEnd = null; t.sleepMin = 0; t.app = null; changed = true; } });
+    if (changed || (tv().sleepEnd && ticks % 15 === 0)) { renderAll(); return; }
+    if (tv().sleepEnd && sheetKind === 'sleep' && !dialDrag) { dFill.t = remainingMs() / 60000; renderDialText(); kick(); }
+  }, 1000);
+
+  renderAll();
+  fit();
+})();
+</script>
+</body>
+</html>
