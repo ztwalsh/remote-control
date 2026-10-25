@@ -26,7 +26,7 @@ xcodegen                      # creates RemoteControl.xcodeproj from project.yml
 open RemoteControl.xcodeproj
 ```
 
-Pick an iPhone simulator and run. To run on your own iPhone, set your team in Signing & Capabilities and change the bundle identifier from `com.example.RemoteControl`.
+Pick an iPhone simulator, or your connected iPhone, and run. Signing uses team `HSZZQ94DM7` with automatic provisioning; change `DEVELOPMENT_TEAM` and `PRODUCT_BUNDLE_IDENTIFIER` in `project.yml` to sign with another account.
 
 TVKit's tests run on their own:
 
