@@ -29,6 +29,7 @@ private func pickThenClose(_ pick: () -> Void, close: @escaping () -> Void) {
 
 struct TVPickerSheet: View {
     let store: RemoteStore
+    let onAdd: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -47,8 +48,16 @@ struct TVPickerSheet: View {
                             store.setPower(!tv.isOn, for: tv.id)
                         }
                     }
+                    .contextMenu {
+                        if !store.isDemo {
+                            Button("Remove \(tv.name)", systemImage: "trash", role: .destructive) {
+                                store.removeTV(tv.id)
+                            }
+                        }
+                    }
                 }
             }
+            PillButton(title: "Add a TV", systemImage: "plus", action: onAdd)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 20)

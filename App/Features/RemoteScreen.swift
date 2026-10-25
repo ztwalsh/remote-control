@@ -7,7 +7,7 @@ struct RemoteScreen: View {
     @State private var sheet: Sheet?
 
     enum Sheet: String, Identifiable {
-        case tvs, soundOut, sleep
+        case tvs, addTV, soundOut, sleep
         var id: String { rawValue }
     }
 
@@ -117,8 +117,12 @@ struct RemoteScreen: View {
         let close = { sheet = nil }
         switch kind {
         case .tvs:
-            TVPickerSheet(store: store, onClose: close)
-                .presentationDetents([.height(360)])
+            TVPickerSheet(store: store, onAdd: { sheet = .addTV }, onClose: close)
+                .presentationDetents([.height(420)])
+        case .addTV:
+            AddTVSheet(store: store, onClose: close)
+                .presentationDetents([.height(440)])
+                .interactiveDismissDisabled()
         case .soundOut:
             SoundOutSheet(store: store, onClose: close)
                 .presentationDetents([.height(400)])

@@ -28,18 +28,31 @@ final class RemoteStore {
     /// A sleep timer that was just cancelled, while Undo is offered.
     private(set) var undoSleep: (id: String, endsAt: Date)?
 
-    private let controllers: [String: any TVControlling]
+    /// True while the app shows the example TVs. Pairing the first real TV replaces them.
+    private(set) var isDemo: Bool
+    /// Paired TVs that are connecting right now.
+    private(set) var connecting: Set<String> = []
+
+    private var controllers: [String: any TVControlling]
+    /// The connection to each paired TV. Example TVs have none.
+    private var clients: [String: SSAPClient]
+    private let pairings = PairingStore()
+    /// The connection being paired in the Add a TV sheet, so it can be cancelled.
+    private var pairingClient: SSAPClient?
     private var pendingVolume: [String: Int] = [:]
     private var sendingVolume: Set<String> = []
     private var lastLocalVolumeChange: [String: Date] = [:]
     private var undoTasks: [String: Task<Void, Never>] = [:]
     private var sleepTasks: [String: Task<Void, Never>] = [:]
-    private var listeners: [Task<Void, Never>] = []
+    private var listeners: [String: Task<Void, Never>] = [:]
+    private var started = false
 
-    init(tvs: [TVState], controllers: [String: any TVControlling]) {
+    init(tvs: [TVState], controllers: [String: any TVControlling], clients: [String: SSAPClient] = [:], isDemo: Bool = false) {
         self.tvs = tvs
         selectedID = tvs.first?.id ?? ""
         self.controllers = controllers
+        self.clients = clients
+        self.isDemo = isDemo
     }
 
     var selected: TVState {
@@ -81,6 +94,8 @@ final class RemoteStore {
         Task {
             if isOn {
                 try? await controller.powerOn()
+                // A real TV drops its connection while off; reconnect once it has woken.
+                if clients[id] != nil { await reconnectAfterWake(id) }
             } else {
                 try? await controller.powerOff()
             }
@@ -197,6 +212,7 @@ final class RemoteStore {
     // MARK: - Status
 
     func status(for tv: TVState) -> String {
+        if connecting.contains(tv.id) && !tv.isOn { return "Connecting…" }
         if !tv.isOn { return "Off" }
         if let endsAt = tv.sleepEndsAt {
             let minutes = max(1, Int((endsAt.timeIntervalSinceNow / 60).rounded(.up)))
@@ -212,17 +228,142 @@ final class RemoteStore {
         return rest == 0 ? "\(hours) hr" : "\(hours) hr \(rest) min"
     }
 
+    // MARK: - Paired TVs
+
+    /// Pairs with the TV at `host` and selects it. The first time, the TV asks "Allow this device?";
+    /// `onPrompt` runs when it does. Throws if the TV can't be reached or the prompt is declined.
+    func addTV(name: String, host: String, onPrompt: @escaping @MainActor () -> Void) async throws {
+        let client = SSAPClient(host: host)
+        pairingClient = client
+        defer { pairingClient = nil }
+        let prompts = Task { @MainActor in
+            for await state in client.states where state == .awaitingPairing { onPrompt() }
+        }
+        defer { prompts.cancel() }
+
+        let clientKey = try await client.connect(clientKey: nil)
+        let fingerprint = await client.certificateFingerprint
+        let macAddress = try? await WebOSTV(client: client, macAddress: nil).fetchMACAddress()
+        let id = UUID().uuidString
+        try pairings.save(Pairing(clientKey: clientKey, certificateFingerprint: fingerprint, macAddress: macAddress), for: id)
+        SavedTVs.save(SavedTVs.load() + [SavedTV(id: id, name: name, host: host)])
+
+        if isDemo {
+            listeners.values.forEach { $0.cancel() }
+            listeners = [:]
+            controllers = [:]
+            tvs = []
+            isDemo = false
+        }
+        let controller = WebOSTV(client: client, macAddress: macAddress)
+        clients[id] = client
+        controllers[id] = controller
+        tvs.append(TVState(id: id, name: name, isOn: true, volume: 0, isMuted: false, soundOutput: .tvSpeaker))
+        select(id)
+        await refresh(id, from: controller)
+        listen(to: id, controller)
+    }
+
+    /// Stops a pairing in progress, for example when the Add a TV sheet is closed.
+    func cancelPairing() {
+        guard let client = pairingClient else { return }
+        Task { await client.disconnect() }
+    }
+
+    /// Forgets a paired TV. Removing the last one brings back the example TVs.
+    func removeTV(_ id: String) {
+        guard let client = clients.removeValue(forKey: id) else { return }
+        Task { await client.disconnect() }
+        listeners.removeValue(forKey: id)?.cancel()
+        controllers[id] = nil
+        pairings.remove(for: id)
+        SavedTVs.save(SavedTVs.load().filter { $0.id != id })
+        tvs.removeAll { $0.id == id }
+
+        if tvs.isEmpty {
+            let demo = RemoteStore.demo()
+            tvs = demo.tvs
+            controllers = demo.controllers
+            isDemo = true
+            for (id, controller) in controllers { listen(to: id, controller) }
+        }
+        if !tvs.contains(where: { $0.id == selectedID }) { select(tvs[0].id) }
+    }
+
+    /// Reconnects every paired TV. iOS drops connections while the app is in the background.
+    func reconnect() {
+        for id in clients.keys {
+            Task { await connect(id) }
+        }
+    }
+
+    /// Connects with the stored client key, then reads the TV's current state.
+    /// A TV that can't be reached is shown as off, unless it's still waking up.
+    @discardableResult
+    private func connect(_ id: String, markOffOnFailure: Bool = true) async -> Bool {
+        guard let client = clients[id], let controller = controllers[id], !connecting.contains(id) else { return false }
+        connecting.insert(id)
+        defer { connecting.remove(id) }
+        // Stop listening first: reconnecting closes the old socket, which reports a disconnect.
+        listeners.removeValue(forKey: id)?.cancel()
+        do {
+            _ = try await client.connect(clientKey: pairings.load(for: id)?.clientKey)
+        } catch {
+            if markOffOnFailure { update(id) { $0.isOn = false } }
+            return false
+        }
+        update(id) { $0.isOn = true }
+        await refresh(id, from: controller)
+        listen(to: id, controller)
+        return true
+    }
+
+    /// webOS takes several seconds to boot after Wake-on-LAN. Keeps trying for about 20 seconds.
+    private func reconnectAfterWake(_ id: String) async {
+        for _ in 0..<10 {
+            try? await Task.sleep(for: .seconds(2))
+            guard tvs.contains(where: { $0.id == id && $0.isOn }) else { return }
+            if await connect(id, markOffOnFailure: false) { return }
+        }
+        update(id) { $0.isOn = false }
+    }
+
+    private func refresh(_ id: String, from controller: any TVControlling) async {
+        if let status = try? await controller.volume() {
+            update(id) { tv in
+                tv.volume = status.level
+                tv.isMuted = status.muted
+                if let output = status.soundOutput { tv.soundOutput = output }
+            }
+        }
+        if let output = try? await controller.soundOutput() {
+            update(id) { $0.soundOutput = output }
+        }
+        if let appID = try? await controller.foregroundAppID() {
+            update(id) { $0.foregroundAppID = appID }
+        }
+    }
+
     // MARK: - Listening to the TVs
 
-    /// Starts following changes pushed by each TV, such as someone using the physical remote.
+    /// Connects to the paired TVs and starts following changes pushed by each TV,
+    /// such as someone using the physical remote.
     func start() {
-        guard listeners.isEmpty else { return }
-        for (id, controller) in controllers {
-            listeners.append(Task { [weak self] in
-                for await event in await controller.events() {
-                    self?.apply(event, to: id)
-                }
-            })
+        guard !started else { return }
+        started = true
+        for (id, controller) in controllers where clients[id] == nil {
+            listen(to: id, controller)
+        }
+        reconnect()
+    }
+
+    private func listen(to id: String, _ controller: any TVControlling) {
+        listeners[id]?.cancel()
+        listeners[id] = Task { [weak self] in
+            for await event in await controller.events() {
+                guard !Task.isCancelled else { return }
+                self?.apply(event, to: id)
+            }
         }
     }
 
@@ -241,7 +382,9 @@ final class RemoteStore {
         case .foregroundApp(let appID):
             update(id) { $0.foregroundAppID = appID }
         case .disconnected:
-            break
+            // A real TV closes the connection when it turns off. iOS also drops it while the app
+            // is in the background; returning to the app reconnects.
+            update(id) { $0.isOn = false }
         }
     }
 
@@ -252,6 +395,25 @@ final class RemoteStore {
 }
 
 extension RemoteStore {
+    /// The paired TVs, or the example TVs until one is paired.
+    static func load() -> RemoteStore {
+        let saved = SavedTVs.load()
+        guard !saved.isEmpty else { return demo() }
+        let pairings = PairingStore()
+        var clients: [String: SSAPClient] = [:]
+        var controllers: [String: any TVControlling] = [:]
+        for tv in saved {
+            let pairing = pairings.load(for: tv.id)
+            let client = SSAPClient(host: tv.host, pinnedFingerprint: pairing?.certificateFingerprint)
+            clients[tv.id] = client
+            controllers[tv.id] = WebOSTV(client: client, macAddress: pairing?.macAddress)
+        }
+        let tvs = saved.map {
+            TVState(id: $0.id, name: $0.name, isOn: false, volume: 0, isMuted: false, soundOutput: .tvSpeaker)
+        }
+        return RemoteStore(tvs: tvs, controllers: controllers, clients: clients)
+    }
+
     /// Three example TVs backed by `MockTV`, so the app runs in the simulator before pairing exists.
     static func demo() -> RemoteStore {
         let tvs = [
@@ -265,6 +427,6 @@ extension RemoteStore {
         let controllers: [String: any TVControlling] = Dictionary(uniqueKeysWithValues: tvs.map { tv in
             (tv.id, MockTV(volume: tv.volume, soundOutput: tv.soundOutput, foregroundAppID: tv.foregroundAppID, isOn: tv.isOn) as any TVControlling)
         })
-        return RemoteStore(tvs: tvs, controllers: controllers)
+        return RemoteStore(tvs: tvs, controllers: controllers, isDemo: true)
     }
 }

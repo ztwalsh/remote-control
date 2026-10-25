@@ -6,14 +6,15 @@ The design comes from the HTML prototype in [`prototype/lg-remote.html`](prototy
 
 ## Status
 
-This is the start of phase 1. Nothing here has been compiled yet: it was written without a Mac, so expect a few build fixes the first time.
+Phase 0: trying it on real TVs. The app builds and runs, and TVKit's tests pass. It hasn't been used with a real TV yet.
 
 | Part | State |
 |---|---|
-| Remote screen, TV and Sound out pickers, sleep dial, favorites | Built in SwiftUI. Runs against three example TVs (`MockTV`). |
+| Remote screen, TV and Sound out pickers, sleep dial, favorites | Built in SwiftUI. Shows three example TVs (`MockTV`) until a real one is added. |
+| Adding a TV by IP address | Built: **Your TVs › Add a TV**. Pairs, saves the key in the Keychain, reconnects on launch and on return to the app. Long-press a TV to remove it. |
 | TVKit: connection, pairing, volume, power, apps, sound output | Written against LG's SSAP protocol. Not yet tried on a real TV. |
 | Discovery (SSDP) and Wake-on-LAN | Written. Needs Apple's multicast entitlement to work on an iPhone. |
-| Pairing screens, error states, settings | Not started. |
+| First-run onboarding, error states, settings | Not started. |
 | Sleep timer that runs while the app is closed | Not started; see the plan, section 4. Today the app turns the TV off itself, only while it's open. |
 
 ## Run it
@@ -51,7 +52,7 @@ project.yml                XcodeGen spec
 
 ## Before it works with a real TV
 
-1. **Request the multicast entitlement** from Apple (`com.apple.developer.networking.multicast`). Discovery and Wake-on-LAN both need it on a device. Once granted, add an entitlements file with that key and point the target at it in `project.yml`. Don't add it before approval or signing will fail.
+1. **Multicast entitlement** (`com.apple.developer.networking.multicast`): requested from Apple on 2026-10-25. Discovery and Wake-on-LAN both need it on a device; until then, add TVs by IP address, and turning a TV on won't work. Once granted, add an entitlements file with that key and point the target at it in `project.yml`. Don't add it before approval or signing will fail.
 2. **Run phase 0** from the plan on your TVs: pair, set the volume, change the sound output, wake from off, and check the app IDs in `FavoriteApp.swift` against what the TV lists.
 3. **Turn on "Turn on via Wi-Fi"** (sometimes "Mobile TV On") on each TV so it can be woken.
 
