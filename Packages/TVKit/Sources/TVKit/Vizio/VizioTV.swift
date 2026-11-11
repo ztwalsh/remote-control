@@ -3,16 +3,19 @@ import Foundation
 /// A real Vizio SmartCast TV. Everything goes through `VizioClient` over HTTPS.
 ///
 /// What Vizio's local API can't do: list installed apps (the app offers the well-known ones below,
-/// plus the TV's inputs) or choose the sound output. Turning it on works while the TV's
-/// power mode is Quick Start; in Eco mode it drops off the network when off.
+/// plus the TV's inputs) or choose the sound output. Turning it on needs Wake-on-LAN once the TV
+/// sleeps (its API server shuts down); in Eco mode nothing can wake it.
 ///
 /// Not yet verified against hardware.
 public final class VizioTV: TVControlling {
     public let client: VizioClient
+    /// Read while the TV is on (`VizioClient.macAddresses()`); needed to wake it.
+    public let macAddresses: [String]
     private let memory = Memory()
 
-    public init(client: VizioClient) {
+    public init(client: VizioClient, macAddresses: [String] = []) {
         self.client = client
+        self.macAddresses = macAddresses
     }
 
     public var supportsSoundOutput: Bool { false }
@@ -49,9 +52,21 @@ public final class VizioTV: TVControlling {
 
     // MARK: - Power
 
-    /// Vizio has no Wake-on-LAN: the TV hears the power key only while it stays on the network,
-    /// which it does in Quick Start power mode. In Eco mode it can't be reached once off.
-    public func powerOn() async throws { try await client.key(.powerOn) }
+    /// A TV that still answers (just switched off, or Quick Start) takes the power key. Once it sleeps
+    /// its API server is off, so it needs a Wake-on-LAN packet first (never in Eco mode). Some sets
+    /// wake the network but stay dark, so the power key follows once the TV answers. Power On is a
+    /// discrete key, not a toggle, so pressing it on a TV that's already on does nothing.
+    public func powerOn() async throws {
+        if (try? await client.key(.powerOn)) != nil { return }
+        guard !macAddresses.isEmpty else { throw TVError.missingMACAddress }
+        try await WakeOnLAN.send(macAddresses: macAddresses)
+        for _ in 0..<10 {
+            try? await Task.sleep(for: .seconds(1.5))
+            guard let isOn = try? await client.isOn() else { continue }
+            if !isOn { try? await client.key(.powerOn) }
+            return
+        }
+    }
 
     public func powerOff() async throws { try await client.key(.powerOff) }
 

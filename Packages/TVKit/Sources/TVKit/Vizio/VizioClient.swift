@@ -125,6 +125,36 @@ public actor VizioClient: TVSession {
         return reply["items"]?.arrayValue?.first?["value"]?.intValue == 1
     }
 
+    /// The TV's network (MAC) addresses for Wake-on-LAN, read while it's on. Vizio doesn't document
+    /// which field holds them, so this collects anything shaped like a MAC address from the device
+    /// info and the network information page.
+    public func macAddresses() async -> [String] {
+        var found: [String] = []
+        for path in ["/state/device/deviceinfo", "/menu_native/dynamic/tv_settings/system/system_information/network_information"] {
+            guard let reply = try? await call("GET", path) else { continue }
+            for mac in Self.macAddresses(in: reply) where !found.contains(mac) { found.append(mac) }
+        }
+        return found
+    }
+
+    /// Every MAC-shaped string in a reply ("a0:b1:c2:d3:e4:f5" or with dashes), lowercased,
+    /// skipping all-zero and broadcast placeholders.
+    static func macAddresses(in json: JSONValue) -> [String] {
+        switch json {
+        case .string(let text):
+            let parts = text.trimmingCharacters(in: .whitespaces).split(whereSeparator: { $0 == ":" || $0 == "-" })
+            guard parts.count == 6, parts.allSatisfy({ $0.count == 2 && $0.allSatisfy(\.isHexDigit) }) else { return [] }
+            let mac = parts.joined(separator: ":").lowercased()
+            return ["00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"].contains(mac) ? [] : [mac]
+        case .array(let items):
+            return items.flatMap(macAddresses(in:))
+        case .object(let object):
+            return object.keys.sorted().flatMap { macAddresses(in: object[$0]!) }
+        default:
+            return []
+        }
+    }
+
     public func key(_ code: VizioKey) async throws {
         _ = try await call("PUT", "/key_command/", [
             "KEYLIST": .array([.object([

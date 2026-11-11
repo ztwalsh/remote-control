@@ -292,6 +292,19 @@ final class VizioTests: XCTestCase {
         XCTAssertFalse(VizioTV.sameNamespace(2, 3))
     }
 
+    func testFindsMACAddressesAnywhereInAReply() throws {
+        let json = try JSONDecoder().decode(JSONValue.self, from: Data("""
+        {"STATUS":{"RESULT":"SUCCESS"},"ITEMS":[
+          {"CNAME":"wired_mac","VALUE":"A0-B1-C2-D3-E4-F5"},
+          {"CNAME":"wireless_mac","VALUE":"a0:b1:c2:d3:e4:f6"},
+          {"CNAME":"placeholder","VALUE":"00:00:00:00:00:00"},
+          {"CNAME":"ip","VALUE":"192.168.1.40"},
+          {"CNAME":"model","VALUE":"M65QXM-K03"}]}
+        """.utf8)).lowercasedKeys()
+        XCTAssertEqual(Set(VizioClient.macAddresses(in: json)), ["a0:b1:c2:d3:e4:f5", "a0:b1:c2:d3:e4:f6"])
+        XCTAssertEqual(VizioClient.macAddresses(in: .string("not a mac")), [])
+    }
+
     func testAppsMatchPyvizio() {
         func app(_ name: String) -> VizioTV.App? { VizioTV.apps.first { $0.name == name } }
         XCTAssertEqual(app("Netflix").map { "\($0.namespace)/\($0.appID)" }, "3/1")

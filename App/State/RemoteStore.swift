@@ -562,7 +562,7 @@ final class RemoteStore {
     /// only the wired one, which a TV on Wi‑Fi ignores. Ask again on each connect until both are known.
     /// Returns the new controller when the addresses were found.
     private func backfillMACAddress(_ id: String, client: any TVSession) async -> (any TVControlling)? {
-        guard !(client is VizioClient), var pairing = pairings.load(for: id), pairing.macAddresses?.isEmpty ?? true else { return nil }
+        guard var pairing = pairings.load(for: id), pairing.macAddresses?.isEmpty ?? true else { return nil }
         let macAddresses = await Self.fetchMACAddresses(client)
         guard !macAddresses.isEmpty else { return nil }
         pairing.macAddresses = macAddresses
@@ -695,17 +695,17 @@ extension RemoteStore {
 
     static func controller(for session: any TVSession, macAddresses: [String]) -> any TVControlling {
         if let samsung = session as? SamsungClient { return SamsungTV(client: samsung, macAddresses: macAddresses) }
-        if let vizio = session as? VizioClient { return VizioTV(client: vizio) }
+        if let vizio = session as? VizioClient { return VizioTV(client: vizio, macAddresses: macAddresses) }
         return WebOSTV(client: session as! SSAPClient, macAddresses: macAddresses)
     }
 
-    /// The addresses Wake-on-LAN needs. LG reports them once connected; Samsung on its info page.
-    /// Vizio wakes with its power key instead.
+    /// The addresses Wake-on-LAN needs. LG reports them once connected; Samsung on its info page;
+    /// Vizio somewhere in its device or network info, read while it's on.
     static func fetchMACAddresses(_ session: any TVSession) async -> [String] {
         if let lg = session as? SSAPClient {
             return (try? await WebOSTV(client: lg, macAddresses: []).fetchMACAddresses()) ?? []
         }
-        if session is VizioClient { return [] }
+        if let vizio = session as? VizioClient { return await vizio.macAddresses() }
         return [await SamsungDeviceInfo.fetch(host: session.host)?.wifiMAC].compactMap { $0 }
     }
 
