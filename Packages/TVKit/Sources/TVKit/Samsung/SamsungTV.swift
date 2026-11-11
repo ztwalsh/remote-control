@@ -59,13 +59,23 @@ public final class SamsungTV: TVControlling {
 
     // MARK: - Power
 
+    /// A set in network standby still answers on the network and wakes on its power key; it often
+    /// ignores Wake-on-LAN. One in deep standby only hears Wake-on-LAN. Both need "Power On with Mobile".
+    ///
+    /// The two aren't sent together: if the packet woke the set first, the power key would turn it off again.
     public func powerOn() async throws {
-        if !macAddresses.isEmpty { try? await WakeOnLAN.send(macAddresses: macAddresses) }
-        // Newer sets keep the network up in standby and wake on the power key.
-        if await SamsungDeviceInfo.fetch(host: client.host, timeout: 1)?.powerState == "standby" {
-            try? await client.key("KEY_POWER")
+        let info = await SamsungDeviceInfo.fetch(host: client.host, timeout: 2)
+        if info?.powerState == "on" { return }
+        if info?.powerState == "standby" {
+            do {
+                try await client.wake()
+                return
+            } catch {
+                // Couldn't reconnect to press the key; fall back to Wake-on-LAN.
+            }
         }
-        if macAddresses.isEmpty { throw TVError.missingMACAddress }
+        guard !macAddresses.isEmpty else { throw TVError.missingMACAddress }
+        try await WakeOnLAN.send(macAddresses: macAddresses)
     }
 
     public func powerOff() async throws {
@@ -74,14 +84,87 @@ public final class SamsungTV: TVControlling {
 
     // MARK: - Apps
 
+    /// The TV's own list when it gives one. 2020 and later sets often never answer that request,
+    /// so after the first timeout this checks the well-known apps instead (see `SamsungApp.catalog`).
     public func launchPoints() async throws -> [LaunchPoint] {
-        let apps = try await client.installedApps()
-        await memory.set(appTypes: Dictionary(apps.map { ($0.id, $0.type) }, uniquingKeysWith: { first, _ in first }))
-        return apps.map { LaunchPoint(id: $0.id, title: $0.name, iconURL: nil) }
+        if await memory.listAnswers {
+            do {
+                let apps = try await client.installedApps()
+                if !apps.isEmpty {
+                    await memory.set(appTypes: Dictionary(apps.map { ($0.id, $0.type) }, uniquingKeysWith: { first, _ in first }))
+                    return apps.map { LaunchPoint(id: $0.id, title: $0.name, iconURL: nil) }
+                }
+            } catch TVError.timeout {
+                await memory.setListAnswers(false)
+            }
+        }
+        return await catalogApps()
     }
 
+    /// Asks the TV about each well-known app, newest Samsung ID first, all at once.
+    /// If the TV won't say for any of them, offers the whole catalog rather than nothing.
+    private func catalogApps() async -> [LaunchPoint] {
+        let host = client.host
+        let probes = await withTaskGroup(of: Probe.self) { group -> [Probe] in
+            for (index, app) in SamsungApp.catalog.enumerated() {
+                group.addTask {
+                    var answered = false
+                    for id in app.ids {
+                        switch await SamsungREST.status(host: host, appID: id) {
+                        case .installed: return Probe(index: index, id: id, answered: true)
+                        case .notInstalled: answered = true
+                        case .unknown: break
+                        }
+                    }
+                    return Probe(index: index, id: nil, answered: answered)
+                }
+            }
+            var all: [Probe] = []
+            for await probe in group { all.append(probe) }
+            return all.sorted { $0.index < $1.index }
+        }
+        let found = probes.compactMap { probe in
+            probe.id.map { LaunchPoint(id: $0, title: SamsungApp.catalog[probe.index].name, iconURL: nil) }
+        }
+        if !found.isEmpty || probes.contains(where: \.answered) { return found }
+        return SamsungApp.catalog.map { LaunchPoint(id: $0.ids[0], title: $0.name, iconURL: nil) }
+    }
+
+    private struct Probe: Sendable {
+        let index: Int
+        let id: String?
+        let answered: Bool
+    }
+
+    /// Opens an app and checks it came up, since the TV accepts launches it then ignores.
+    /// For each known ID of the app: the launch style Samsung expects for it, then the other style,
+    /// then Samsung's HTTP API. IDs the TV says aren't installed are skipped.
     public func launch(appID: String) async throws {
-        try await client.launch(appID: appID, type: await memory.appTypes[appID] ?? 2)
+        let host = client.host
+        let knownType = await memory.appTypes[appID]
+        for id in SamsungApp.candidates(for: appID) {
+            let status = await SamsungREST.status(host: host, appID: id)
+            if status == .notInstalled { continue }
+            let first = knownType ?? 2
+            for type in [first, first == 4 ? 2 : 4] {
+                try? await client.launch(appID: id, type: type)
+                // The TV won't say whether apps are running, so trust the first try.
+                if status == .unknown { return }
+                if await opened(id) { return }
+            }
+            await SamsungREST.launch(host: host, appID: id)
+            if await opened(id) { return }
+        }
+        throw TVError.server("The TV didn't open the app")
+    }
+
+    /// Watches the app's status for about two seconds.
+    private func opened(_ id: String) async -> Bool {
+        for _ in 0..<4 {
+            try? await Task.sleep(for: .milliseconds(500))
+            if case .installed(running: true) = await SamsungREST.status(host: client.host, appID: id) { return true }
+        }
+        return false
     }
 
     public func foregroundAppID() async throws -> String? { nil }
@@ -147,6 +230,8 @@ public final class SamsungTV: TVControlling {
         var level: Int?
         var muted = false
         var appTypes: [String: Int] = [:]
+        /// False once the TV has ignored a request for its app list.
+        var listAnswers = true
 
         func set(level: Int? = nil, muted: Bool? = nil) {
             if let level { self.level = level }
@@ -154,5 +239,7 @@ public final class SamsungTV: TVControlling {
         }
 
         func set(appTypes: [String: Int]) { self.appTypes = appTypes }
+
+        func setListAnswers(_ value: Bool) { listAnswers = value }
     }
 }

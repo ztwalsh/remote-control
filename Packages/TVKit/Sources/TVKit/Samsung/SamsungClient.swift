@@ -15,6 +15,8 @@ public actor SamsungClient: TVSession {
     static let clientName = "Remote"
 
     private let trust: CertificateTrust
+    /// The token from pairing or the last connect, kept so `wake()` can reconnect without a prompt.
+    private var token: String?
     private var session: URLSession?
     private var task: URLSessionWebSocketTask?
     private var connected: CheckedContinuation<String, Error>?
@@ -22,8 +24,9 @@ public actor SamsungClient: TVSession {
     private var listeners: [UUID: AsyncStream<Bool>.Continuation] = [:]
     private let stateContinuation: AsyncStream<ConnectionState>.Continuation
 
-    public init(host: String, pinnedFingerprint: String? = nil) {
+    public init(host: String, pinnedFingerprint: String? = nil, token: String? = nil) {
         self.host = host
+        self.token = token
         trust = CertificateTrust(pinnedFingerprint: pinnedFingerprint)
         let (stream, continuation) = AsyncStream<ConnectionState>.makeStream()
         states = stream
@@ -38,7 +41,9 @@ public actor SamsungClient: TVSession {
         var lastError: Error = TVError.notConnected
         for url in Self.urls(host: host, token: token) {
             do {
-                return try await open(url, waitingForPrompt: token == nil)
+                let issued = try await open(url, waitingForPrompt: token == nil)
+                if !issued.isEmpty { self.token = issued } else if let token, !token.isEmpty { self.token = token }
+                return issued
             } catch TVError.pairingRejected {
                 throw TVError.pairingRejected
             } catch {
@@ -49,12 +54,17 @@ public actor SamsungClient: TVSession {
         throw lastError
     }
 
+    /// With a token, only the encrypted port: newer sets ignore tokens on 8001 and would ask again.
+    /// Without one (first pairing, or a 2016–2017 set that never issues tokens), try both.
     static func urls(host: String, token: String?) -> [URL] {
         let name = Data(clientName.utf8).base64EncodedString()
         var query = "name=\(name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? name)"
-        if let token, !token.isEmpty { query += "&token=\(token)" }
+        let hasToken = !(token ?? "").isEmpty
+        if hasToken, let token { query += "&token=\(token)" }
         let path = "/api/v2/channels/samsung.remote.control?\(query)"
-        return [URL(string: "wss://\(host):8002\(path)"), URL(string: "ws://\(host):8001\(path)")].compactMap { $0 }
+        let secure = URL(string: "wss://\(host):8002\(path)")
+        let plain = URL(string: "ws://\(host):8001\(path)")
+        return (hasToken ? [secure] : [secure, plain]).compactMap { $0 }
     }
 
     private func open(_ url: URL, waitingForPrompt: Bool) async throws -> String {
@@ -104,6 +114,15 @@ public actor SamsungClient: TVSession {
     }
 
     // MARK: - Commands
+
+    /// Turns on a TV in network standby by pressing its power key. The connection dropped when
+    /// the TV went off, so this reconnects first, with the saved token so the TV doesn't ask again.
+    public func wake() async throws {
+        if task == nil {
+            _ = try await connect(clientKey: token)
+        }
+        try await key("KEY_POWER")
+    }
 
     /// Presses a remote key, such as `KEY_VOLUP` or `KEY_HOME`.
     public func key(_ code: String) async throws {

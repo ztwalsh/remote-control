@@ -677,7 +677,9 @@ extension RemoteStore {
     static func session(_ brand: TVBrand, host: String, pairing: Pairing?) -> any TVSession {
         switch brand {
         case .lg: return SSAPClient(host: host, pinnedFingerprint: pairing?.certificateFingerprint)
-        case .samsung: return SamsungClient(host: host, pinnedFingerprint: pairing?.certificateFingerprint)
+        case .samsung:
+            // The token lets the app reconnect to wake a TV in standby without a new prompt.
+            return SamsungClient(host: host, pinnedFingerprint: pairing?.certificateFingerprint, token: pairing?.clientKey)
         case .vizio: return VizioClient(host: host, pinnedFingerprint: pairing?.certificateFingerprint)
         }
     }

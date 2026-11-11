@@ -199,13 +199,40 @@ final class MockTVTests: XCTestCase {
 }
 
 final class SamsungTests: XCTestCase {
-    func testConnectURLsTryEncryptedPortFirstAndCarryToken() {
+    func testConnectURLsWithTokenUseOnlyTheEncryptedPort() {
         let urls = SamsungClient.urls(host: "192.168.1.30", token: "123")
-        XCTAssertEqual(urls.count, 2)
+        XCTAssertEqual(urls.count, 1)
         XCTAssertTrue(urls[0].absoluteString.hasPrefix("wss://192.168.1.30:8002/api/v2/channels/samsung.remote.control?name="))
         XCTAssertTrue(urls[0].absoluteString.hasSuffix("&token=123"))
-        XCTAssertTrue(urls[1].absoluteString.hasPrefix("ws://192.168.1.30:8001/"))
-        XCTAssertFalse(SamsungClient.urls(host: "h", token: nil)[0].absoluteString.contains("token"))
+    }
+
+    func testConnectURLsWithoutTokenTryBothPorts() {
+        for token in [nil, ""] {
+            let urls = SamsungClient.urls(host: "h", token: token)
+            XCTAssertEqual(urls.count, 2)
+            XCTAssertTrue(urls[0].absoluteString.hasPrefix("wss://h:8002/"))
+            XCTAssertTrue(urls[1].absoluteString.hasPrefix("ws://h:8001/"))
+            XCTAssertFalse(urls[0].absoluteString.contains("token"))
+        }
+    }
+
+    func testCatalogFindsAppsBySamsungIDOrLGAlias() {
+        XCTAssertEqual(SamsungApp.entry(for: "3201907018807")?.name, "Netflix")
+        XCTAssertEqual(SamsungApp.entry(for: "netflix")?.name, "Netflix")
+        XCTAssertNil(SamsungApp.entry(for: "com.example.unknown"))
+        // An LG alias tries every Samsung ID, newest first.
+        XCTAssertEqual(SamsungApp.candidates(for: "netflix"), ["3201907018807", "11101200001"])
+        // A Samsung ID tries itself first, then the entry's others.
+        XCTAssertEqual(SamsungApp.candidates(for: "11101200001"), ["11101200001", "3201907018807"])
+        XCTAssertEqual(SamsungApp.candidates(for: "123"), ["123"])
+    }
+
+    func testAppStatusParsing() {
+        let installed = Data(#"{"id":"111299001912","name":"YouTube","running":true,"version":"1.0","visible":true}"#.utf8)
+        XCTAssertEqual(SamsungAppStatus.parse(statusCode: 200, body: installed), .installed(running: true))
+        XCTAssertEqual(SamsungAppStatus.parse(statusCode: 404, body: Data()), .notInstalled)
+        XCTAssertEqual(SamsungAppStatus.parse(statusCode: 200, body: Data("true".utf8)), .unknown)
+        XCTAssertEqual(SamsungAppStatus.parse(statusCode: 500, body: Data()), .unknown)
     }
 
     func testDeviceInfoParsing() throws {
