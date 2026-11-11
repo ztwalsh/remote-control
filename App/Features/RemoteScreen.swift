@@ -5,11 +5,18 @@ struct RemoteScreen: View {
     let store: RemoteStore
 
     @State private var sheet: Sheet?
-    @State private var editingTVID: String?
 
-    enum Sheet: String, Identifiable {
-        case tvs, addTV, editTV, soundOut, sleep, navigate, allApps
-        var id: String { rawValue }
+    /// Which sheet is up. Editing carries the TV's ID with it: kept in separate state, the sheet
+    /// was built before that state arrived, found no TV and came up blank.
+    enum Sheet: Identifiable, Hashable {
+        case tvs, addTV, editTV(String), soundOut, sleep, navigate, allApps
+
+        var id: String {
+            switch self {
+            case .editTV(let tvID): return "editTV-\(tvID)"
+            default: return String(describing: self)
+            }
+        }
     }
 
     var body: some View {
@@ -130,10 +137,7 @@ struct RemoteScreen: View {
             TVPickerSheet(
                 store: store,
                 onAdd: { sheet = .addTV },
-                onRename: { id in
-                    editingTVID = id
-                    sheet = .editTV
-                },
+                onRename: { id in sheet = .editTV(id) },
                 onClose: close
             )
                 .presentationDetents([.height(592)])
@@ -141,11 +145,9 @@ struct RemoteScreen: View {
             AddTVSheet(store: store, onClose: close)
                 .presentationDetents([.height(628), .large])
                 .interactiveDismissDisabled()
-        case .editTV:
-            if let id = editingTVID {
-                EditTVSheet(store: store, tvID: id, onClose: close)
-                    .presentationDetents([.height(548), .large])
-            }
+        case .editTV(let id):
+            EditTVSheet(store: store, tvID: id, onClose: close)
+                .presentationDetents([.height(548), .large])
         case .navigate:
             NavigateSheet(store: store, onClose: close)
                 .presentationDetents([.large])
