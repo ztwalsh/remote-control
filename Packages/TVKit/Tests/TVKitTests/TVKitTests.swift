@@ -292,6 +292,15 @@ final class VizioTests: XCTestCase {
         XCTAssertFalse(VizioTV.sameNamespace(2, 3))
     }
 
+    func testAppsMatchPyvizio() {
+        func app(_ name: String) -> VizioTV.App? { VizioTV.apps.first { $0.name == name } }
+        XCTAssertEqual(app("Netflix").map { "\($0.namespace)/\($0.appID)" }, "3/1")
+        XCTAssertEqual(app("Prime Video").map { "\($0.namespace)/\($0.appID)" }, "2/4")
+        XCTAssertNil(app("Netflix")?.message)
+        XCTAssertEqual(app("WatchFree+")?.message, "http://127.0.0.1:12345/scfs/sctv/main.html#/watchfreeplus")
+        XCTAssertTrue(app("Pluto TV")?.message?.contains("urn:x-cast:tv.pluto") ?? false)
+    }
+
     func testDIALRepliesAreVizioCandidates() {
         XCTAssertEqual(SSDP.brand(for: SSDP.dialSearchTarget), .vizio)
         let description = SSDP.parseDescription("<root><friendlyName>Living Room</friendlyName><manufacturer>VIZIO</manufacturer></root>")

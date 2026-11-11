@@ -38,6 +38,7 @@ public final class VizioTV: TVControlling {
         await memory.set(level: level, muted: false)
         for _ in 0..<min(abs(level - from), 25) {
             try await client.key(level > from ? .volumeUp : .volumeDown)
+            try? await Task.sleep(for: .milliseconds(60))
         }
     }
 
@@ -48,6 +49,8 @@ public final class VizioTV: TVControlling {
 
     // MARK: - Power
 
+    /// Vizio has no Wake-on-LAN: the TV hears the power key only while it stays on the network,
+    /// which it does in Quick Start power mode. In Eco mode it can't be reached once off.
     public func powerOn() async throws { try await client.key(.powerOn) }
 
     public func powerOff() async throws { try await client.key(.powerOff) }
@@ -65,7 +68,7 @@ public final class VizioTV: TVControlling {
         if appID.hasPrefix(Self.inputPrefix) {
             try await client.setInput(String(appID.dropFirst(Self.inputPrefix.count)))
         } else if let app = Self.apps.first(where: { $0.id == appID }) {
-            try await client.launch(namespace: app.namespace, appID: app.appID, message: nil)
+            try await client.launch(namespace: app.namespace, appID: app.appID, message: app.message)
         } else {
             throw TVError.unsupported("app \(appID)")
         }
@@ -140,10 +143,12 @@ public final class VizioTV: TVControlling {
         let name: String
         let namespace: Int
         let appID: String
+        /// Some apps need a start message, such as a page address or a cast command.
+        var message: String? = nil
         var id: String { "vizio.app.\(namespace).\(appID)" }
     }
 
-    /// From pyvizio's app list. Vizio treats namespaces 2 and 4 as the same.
+    /// From pyvizio's app list (pyvizio/data/apps.json). Vizio treats namespaces 2 and 4 as the same.
     static let apps: [App] = [
         App(name: "Netflix", namespace: 3, appID: "1"),
         App(name: "YouTube", namespace: 5, appID: "1"),
@@ -156,6 +161,10 @@ public final class VizioTV: TVControlling {
         App(name: "Paramount+", namespace: 2, appID: "37"),
         App(name: "Tubi", namespace: 2, appID: "61"),
         App(name: "Plex", namespace: 2, appID: "9"),
+        App(name: "Pluto TV", namespace: 0, appID: "E6F74C01",
+            message: #"{"CAST_NAMESPACE":"urn:x-cast:tv.pluto","CAST_MESSAGE":{"command":"initializePlayback","channel":"","episode":"","time":0}}"#),
+        App(name: "WatchFree+", namespace: 2, appID: "3014",
+            message: "http://127.0.0.1:12345/scfs/sctv/main.html#/watchfreeplus"),
     ]
 
     static func sameNamespace(_ a: Int, _ b: Int) -> Bool {

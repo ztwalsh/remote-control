@@ -76,8 +76,12 @@ public actor VizioClient: TVSession {
         stateContinuation.yield(.awaitingPairing)
 
         guard let pin = await pinProvider?(), !pin.isEmpty else {
+            // pyvizio's cancel: the TV wants the pairing request back, with a placeholder PIN.
             _ = try? await call("PUT", "/pairing/cancel", [
-                "DEVICE_ID": .string(Self.deviceID), "DEVICE_NAME": .string(Self.deviceName),
+                "DEVICE_ID": .string(Self.deviceID),
+                "CHALLENGE_TYPE": .number(Double(challenge)),
+                "PAIRING_REQ_TOKEN": .number(Double(request)),
+                "RESPONSE_VALUE": "1111",
             ])
             throw TVError.pairingRejected
         }
