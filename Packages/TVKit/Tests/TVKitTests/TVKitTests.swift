@@ -82,6 +82,16 @@ final class ModelParsingTests: XCTestCase {
         XCTAssertEqual(points.first?.id, "netflix")
         XCTAssertEqual(points.first?.iconURL?.lastPathComponent, "netflix.png")
     }
+
+    func testInputsAreToldApart() {
+        let input = { (id: String) in LaunchPoint(id: id, title: id, iconURL: nil).isInput }
+        XCTAssertTrue(input("com.webos.app.hdmi1"))
+        XCTAssertTrue(input("com.webos.app.hdmi4"))
+        XCTAssertTrue(input("com.webos.app.livetv"))
+        XCTAssertTrue(input("com.webos.app.externalinput.av1"))
+        XCTAssertFalse(input("netflix"))
+        XCTAssertFalse(input("com.webos.app.lgchannels"))
+    }
 }
 
 final class WakeOnLANTests: XCTestCase {
@@ -99,6 +109,46 @@ final class WakeOnLANTests: XCTestCase {
 
     func testRejectsBadAddresses() {
         XCTAssertThrowsError(try WakeOnLAN.magicPacket(macAddress: "A8:23:FE"))
+    }
+}
+
+final class WakeAddressTests: XCTestCase {
+    func testPrefersWiFiAndKeepsBoth() {
+        let info: JSONValue = [
+            "wiredInfo": ["macAddress": "aa:bb:cc:00:00:01"],
+            "wifiInfo": ["macAddress": "aa:bb:cc:00:00:02"],
+        ]
+        XCTAssertEqual(WebOSTV.macAddresses(in: info), ["aa:bb:cc:00:00:02", "aa:bb:cc:00:00:01"])
+    }
+
+    func testSkipsBlankAndDuplicateAddresses() {
+        let info: JSONValue = [
+            "wiredInfo": ["macAddress": "AA:BB:CC:00:00:02"],
+            "wifiInfo": ["macAddress": "aa:bb:cc:00:00:02"],
+        ]
+        XCTAssertEqual(WebOSTV.macAddresses(in: info), ["aa:bb:cc:00:00:02"])
+        XCTAssertEqual(WebOSTV.macAddresses(in: ["wifiInfo": ["macAddress": ""]]), [])
+    }
+
+    func testOlderPairingsStillDecode() throws {
+        let old = Data(#"{"clientKey":"k","macAddress":"aa:bb:cc:00:00:01"}"#.utf8)
+        let pairing = try JSONDecoder().decode(Pairing.self, from: old)
+        XCTAssertNil(pairing.macAddresses)
+        XCTAssertEqual(pairing.wakeAddresses, ["aa:bb:cc:00:00:01"])
+    }
+
+    func testIconsTryTheSecurePortFirst() {
+        let url = URL(string: "http://192.168.1.5:3000/resources/abc/netflix.png")!
+        XCTAssertEqual(SSAPClient.resourceCandidates(for: url).map(\.absoluteString), [
+            "https://192.168.1.5:3001/resources/abc/netflix.png",
+            "http://192.168.1.5:3000/resources/abc/netflix.png",
+        ])
+        let secure = URL(string: "https://192.168.1.5:3001/a.png")!
+        XCTAssertEqual(SSAPClient.resourceCandidates(for: secure), [secure])
+    }
+
+    func testButtonMessage() {
+        XCTAssertEqual(PointerInput.button(.up), "type:button\nname:UP\n\n")
     }
 }
 
@@ -123,6 +173,12 @@ final class SSDPTests: XCTestCase {
         XCTAssertTrue(text.hasSuffix("\r\n\r\n"))
     }
 
+    func testCleanName() {
+        XCTAssertEqual(SSDP.cleanName("[LG] webOS TV OLED55C1"), "webOS TV OLED55C1")
+        XCTAssertEqual(SSDP.cleanName("Living room"), "Living room")
+        XCTAssertEqual(SSDP.cleanName("[LG] "), "TV")
+    }
+
     func testDescription() {
         let xml = "<root><device><friendlyName>Living room</friendlyName><modelName>OLED65C3</modelName></device></root>"
         let description = SSDP.parseDescription(xml)
@@ -139,5 +195,79 @@ final class MockTVTests: XCTestCase {
         var iterator = events.makeAsyncIterator()
         let event = await iterator.next()
         XCTAssertEqual(event, .volume(VolumeStatus(level: 100, muted: false, soundOutput: .tvSpeaker)))
+    }
+}
+
+final class SamsungTests: XCTestCase {
+    func testConnectURLsTryEncryptedPortFirstAndCarryToken() {
+        let urls = SamsungClient.urls(host: "192.168.1.30", token: "123")
+        XCTAssertEqual(urls.count, 2)
+        XCTAssertTrue(urls[0].absoluteString.hasPrefix("wss://192.168.1.30:8002/api/v2/channels/samsung.remote.control?name="))
+        XCTAssertTrue(urls[0].absoluteString.hasSuffix("&token=123"))
+        XCTAssertTrue(urls[1].absoluteString.hasPrefix("ws://192.168.1.30:8001/"))
+        XCTAssertFalse(SamsungClient.urls(host: "h", token: nil)[0].absoluteString.contains("token"))
+    }
+
+    func testDeviceInfoParsing() throws {
+        let json = try JSONDecoder().decode(JSONValue.self, from: Data("""
+        {"device":{"name":"[TV] Samsung Q80 Series (55)","modelName":"QN55Q80","wifiMac":"a0:b1:c2:d3:e4:f5","PowerState":"on"},"type":"Samsung SmartTV"}
+        """.utf8))
+        let info = try XCTUnwrap(SamsungDeviceInfo.parse(json))
+        XCTAssertEqual(info.name, "Samsung Q80 Series (55)")
+        XCTAssertEqual(info.model, "QN55Q80")
+        XCTAssertEqual(info.wifiMAC, "a0:b1:c2:d3:e4:f5")
+        XCTAssertEqual(info.powerState, "on")
+        XCTAssertNil(SamsungDeviceInfo.parse(.object(["other": "x"])))
+    }
+
+    func testButtonsMapToSamsungKeys() {
+        XCTAssertEqual(SamsungTV.key(for: .enter), "KEY_ENTER")
+        XCTAssertEqual(SamsungTV.key(for: .back), "KEY_RETURN")
+        XCTAssertEqual(SamsungTV.key(for: .home), "KEY_HOME")
+    }
+
+    func testRenderingControlEnvelopeAndReply() {
+        let body = RenderingControl.envelope("SetVolume", ["InstanceID": "0", "Channel": "Master", "DesiredVolume": "12"])
+        XCTAssertTrue(body.contains("<u:SetVolume xmlns:u=\"urn:schemas-upnp-org:service:RenderingControl:1\"><InstanceID>0</InstanceID><Channel>Master</Channel><DesiredVolume>12</DesiredVolume></u:SetVolume>"))
+        XCTAssertEqual(RenderingControl.value("CurrentVolume", in: "<s:Body><CurrentVolume>17</CurrentVolume></s:Body>"), "17")
+    }
+
+    func testDiscoveryKnowsBothBrands() {
+        XCTAssertEqual(SSDP.brand(for: SSDP.searchTarget), .lg)
+        XCTAssertEqual(SSDP.brand(for: SSDP.samsungSearchTarget), .samsung)
+        XCTAssertNil(SSDP.brand(for: "upnp:rootdevice"))
+        XCTAssertEqual(SSDP.cleanName("[TV] Samsung 7 Series"), "Samsung 7 Series")
+        XCTAssertTrue(String(decoding: SSDP.searchRequest(for: SSDP.samsungSearchTarget), as: UTF8.self).contains("ST: urn:samsung.com"))
+    }
+}
+
+final class VizioTests: XCTestCase {
+    func testKeysLowercaseInEveryShape() throws {
+        let json = try JSONDecoder().decode(JSONValue.self, from: Data("""
+        {"STATUS":{"RESULT":"SUCCESS"},"ITEMS":[{"HASHVAL":12,"VALUE":31,"CNAME":"volume"}]}
+        """.utf8)).lowercasedKeys()
+        XCTAssertEqual(json["status"]?["result"]?.stringValue, "SUCCESS")
+        XCTAssertEqual(json["items"]?.arrayValue?.first?["hashval"]?.intValue, 12)
+        XCTAssertEqual(json["items"]?.arrayValue?.first?["value"]?.intValue, 31)
+    }
+
+    func testButtonsMapToPyvizioCodes() {
+        XCTAssertEqual(VizioTV.key(for: .enter), VizioKey(codeset: 3, code: 2))
+        XCTAssertEqual(VizioTV.key(for: .up), VizioKey(codeset: 3, code: 8))
+        XCTAssertEqual(VizioTV.key(for: .home), VizioKey(codeset: 4, code: 15))
+    }
+
+    func testInputsAndAppsHaveDistinctIDs() {
+        XCTAssertTrue(LaunchPoint(id: VizioTV.inputPrefix + "HDMI-1", title: "Xbox", iconURL: nil).isInput)
+        let ids = VizioTV.apps.map(\.id)
+        XCTAssertEqual(Set(ids).count, ids.count)
+        XCTAssertTrue(VizioTV.sameNamespace(2, 4))
+        XCTAssertFalse(VizioTV.sameNamespace(2, 3))
+    }
+
+    func testDIALRepliesAreVizioCandidates() {
+        XCTAssertEqual(SSDP.brand(for: SSDP.dialSearchTarget), .vizio)
+        let description = SSDP.parseDescription("<root><friendlyName>Living Room</friendlyName><manufacturer>VIZIO</manufacturer></root>")
+        XCTAssertEqual(description.manufacturer, "VIZIO")
     }
 }

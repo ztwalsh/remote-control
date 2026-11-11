@@ -11,3 +11,6 @@ Config/Info.plist
 Package.resolved
 
 .DS_Store
+
+# Local device builds
+build/

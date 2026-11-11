@@ -15,6 +15,8 @@ public actor SSAPClient {
 
     private let port: Int
     private let trust: CertificateTrust
+    /// For files the TV serves, such as app icons, trusting the TV's certificate.
+    private nonisolated let resourceSession: URLSession
     private let requestTimeout: Duration
     private var session: URLSession?
     private var task: URLSessionWebSocketTask?
@@ -32,6 +34,9 @@ public actor SSAPClient {
         self.port = port
         self.requestTimeout = requestTimeout
         trust = CertificateTrust(pinnedFingerprint: pinnedFingerprint)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 5
+        resourceSession = URLSession(configuration: configuration, delegate: trust, delegateQueue: nil)
         let (stream, continuation) = AsyncStream<ConnectionState>.makeStream()
         states = stream
         stateContinuation = continuation
@@ -106,6 +111,39 @@ public actor SSAPClient {
         }
         Task { await self.dispatch(SSAPOutgoing(type: "subscribe", id: id, uri: uri, payload: payload)) }
         return stream
+    }
+
+    /// Downloads a file the TV serves, such as an app icon.
+    ///
+    /// The TV hands out icon addresses on plain HTTP port 3000, which recent firmware has closed,
+    /// so this tries the same path over HTTPS on 3001 first, trusting the TV's certificate.
+    public nonisolated func resource(_ url: URL) async throws -> Data {
+        var lastError: Error = TVError.invalidResponse
+        for candidate in Self.resourceCandidates(for: url) {
+            do {
+                let (data, response) = try await resourceSession.data(from: candidate)
+                if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { continue }
+                if !data.isEmpty { return data }
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError
+    }
+
+    static func resourceCandidates(for url: URL) -> [URL] {
+        guard url.scheme == "http", var secure = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return [url] }
+        secure.scheme = "https"
+        if secure.port == nil || secure.port == 3000 { secure.port = 3001 }
+        return [secure.url, url].compactMap { $0 }
+    }
+
+    /// Opens another socket to the same TV (for example the pointer socket), trusting the same certificate.
+    nonisolated func openSocket(_ url: URL) -> (URLSession, URLSessionWebSocketTask) {
+        let session = URLSession(configuration: .ephemeral, delegate: trust, delegateQueue: nil)
+        let task = session.webSocketTask(with: url)
+        task.resume()
+        return (session, task)
     }
 
     // MARK: - Internals

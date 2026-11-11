@@ -85,6 +85,16 @@ public struct LaunchPoint: Sendable, Equatable, Identifiable {
         self.iconURL = iconURL
     }
 
+    /// HDMI ports, the antenna and other sources, which the TV lists alongside apps.
+    /// Matched by app ID, since webOS gives them no separate type in this list.
+    public var isInput: Bool {
+        let id = id.lowercased()
+        return Self.inputPrefixes.contains { id.hasPrefix($0) } || Self.inputIDs.contains(id)
+    }
+
+    static let inputPrefixes = ["com.webos.app.hdmi", "com.webos.app.externalinput", "vizio.input."]
+    static let inputIDs: Set<String> = ["com.webos.app.livetv", "com.webos.app.tvsimpleviewer"]
+
     public static func parseList(_ payload: JSONValue) -> [LaunchPoint] {
         (payload["launchPoints"]?.arrayValue ?? []).compactMap { item in
             guard let id = item["id"]?.stringValue else { return nil }

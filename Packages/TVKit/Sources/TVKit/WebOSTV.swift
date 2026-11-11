@@ -6,11 +6,13 @@ import Foundation
 public final class WebOSTV: TVControlling {
     public let client: SSAPClient
     /// Needed for Wake-on-LAN, which is the only way to turn the TV on.
-    public let macAddress: String?
+    public let macAddresses: [String]
+    private let pointer: PointerInput
 
-    public init(client: SSAPClient, macAddress: String?) {
+    public init(client: SSAPClient, macAddresses: [String]) {
         self.client = client
-        self.macAddress = macAddress
+        self.macAddresses = macAddresses
+        pointer = PointerInput(client: client)
     }
 
     public func volume() async throws -> VolumeStatus {
@@ -29,8 +31,8 @@ public final class WebOSTV: TVControlling {
     }
 
     public func powerOn() async throws {
-        guard let macAddress else { throw TVError.missingMACAddress }
-        try await WakeOnLAN.send(macAddress: macAddress)
+        guard !macAddresses.isEmpty else { throw TVError.missingMACAddress }
+        try await WakeOnLAN.send(macAddresses: macAddresses)
     }
 
     public func powerOff() async throws {
@@ -60,11 +62,30 @@ public final class WebOSTV: TVControlling {
         _ = try await client.request(SSAPURI.changeSoundOutput, payload: ["output": .string(output.rawValue)])
     }
 
-    /// Reads the MAC address while connected, so the TV can be woken later. Verify on hardware.
-    public func fetchMACAddress() async throws -> String? {
+    /// Reads the MAC addresses while connected, so the TV can be woken later.
+    ///
+    /// The TV reports both its Wi‑Fi and Ethernet addresses whether or not a cable is plugged in,
+    /// and only the one it's connected with wakes it, so keep both (Wi‑Fi first).
+    public func fetchMACAddresses() async throws -> [String] {
         let info = try await client.request(SSAPURI.connectionInfo)
-        return info["wiredInfo"]?["macAddress"]?.stringValue ?? info["wifiInfo"]?["macAddress"]?.stringValue
+        return Self.macAddresses(in: info)
     }
+
+    static func macAddresses(in info: JSONValue) -> [String] {
+        var seen: [String] = []
+        for key in ["wifiInfo", "wiredInfo"] {
+            guard let raw = info[key]?["macAddress"]?.stringValue,
+                  (try? WakeOnLAN.magicPacket(macAddress: raw)) != nil,
+                  !seen.contains(where: { $0.caseInsensitiveCompare(raw) == .orderedSame })
+            else { continue }
+            seen.append(raw)
+        }
+        return seen
+    }
+
+    // MARK: - Buttons
+
+    public func press(_ button: RemoteButton) async throws { try await pointer.press(button) }
 
     public func events() async -> AsyncStream<TVEvent> {
         let client = self.client

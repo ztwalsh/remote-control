@@ -1,4 +1,5 @@
 import Foundation
+import TVKit
 
 /// A paired TV the app remembers between launches. Its client key and certificate fingerprint
 /// live in the Keychain (`PairingStore`), under the same `id`.
@@ -6,6 +7,10 @@ struct SavedTV: Codable, Identifiable, Equatable {
     let id: String
     var name: String
     var host: String
+    /// Nil for TVs saved before Samsung support, which are all LG.
+    var brand: TVBrand?
+
+    var kind: TVBrand { brand ?? .lg }
 }
 
 /// The list of paired TVs, kept in UserDefaults. Nothing secret is stored here.

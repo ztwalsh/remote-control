@@ -32,6 +32,8 @@ public enum SSAPURI {
     public static let changeSoundOutput = "ssap://com.webos.service.apiadapter/audio/changeSoundOutput"
     /// verify: used to read the MAC address for Wake-on-LAN.
     public static let connectionInfo = "ssap://com.webos.service.connectionmanager/getinfo"
+    /// Returns `socketPath`, a second WebSocket that takes pointer moves, clicks and button presses.
+    public static let pointerInputSocket = "ssap://com.webos.service.networkinput/getPointerInputSocket"
 }
 
 /// The register payload. The TV shows an "Allow this device?" prompt the first time.
@@ -45,6 +47,8 @@ enum SSAPRegistration {
         "CONTROL_AUDIO",
         "CONTROL_DISPLAY",
         "CONTROL_INPUT_MEDIA_PLAYBACK",
+        "CONTROL_INPUT_JOYSTICK",
+        "CONTROL_MOUSE_AND_KEYBOARD",
         "CONTROL_POWER",
         "CONTROL_TV_POWER",
         "CONTROL_TIMER_INFO",

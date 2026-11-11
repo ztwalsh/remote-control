@@ -22,21 +22,31 @@ targets:
       path: Config/Info.plist
       properties:
         CFBundleDisplayName: Remote
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Only uses standard HTTPS/TLS, so no export compliance paperwork per build.
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
-        UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSLocalNetworkUsageDescription: Remote finds and controls the TVs on your Wi-Fi.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+    entitlements:
+      path: Config/RemoteControl.entitlements
+      properties:
+        # Granted by Apple on 2026-10-30. Needed for SSDP discovery and Wake-on-LAN.
+        com.apple.developer.networking.multicast: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ztwalsh.RemoteControl
+        MARKETING_VERSION: "1.0"
+        # Raise for every TestFlight upload.
+        CURRENT_PROJECT_VERSION: "2"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        # Set your team to run on a device. Add RemoteControl.entitlements once Apple grants
-        # the multicast entitlement (see README).
+        # Set your team to run on a device.
         DEVELOPMENT_TEAM: HSZZQ94DM7
         CODE_SIGN_STYLE: Automatic
 

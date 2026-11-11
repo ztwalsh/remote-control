@@ -1,10 +1,48 @@
 import SwiftUI
 import TVKit
 
-/// An app on the Favorites grid.
-///
-/// The webOS app IDs below still need checking against `listLaunchPoints` on a real TV.
-/// Once paired, the app should use the TV's own icons (`LaunchPoint.iconURL`) instead of bundled logos.
+/// An app pinned to a TV's Favorites grid. Kept with its name and icon address,
+/// so the grid draws before the TV's app list has loaded.
+struct PinnedApp: Codable, Hashable, Identifiable {
+    let id: String
+    var title: String
+    var iconURL: URL?
+
+    init(id: String, title: String, iconURL: URL?) {
+        self.id = id
+        self.title = title
+        self.iconURL = iconURL
+    }
+
+    init(_ point: LaunchPoint) {
+        self.init(id: point.id, title: point.title, iconURL: point.iconURL)
+    }
+
+    /// A bundled logo for a well-known app, drawn instead of the TV's icon.
+    /// Matched by name too, since Samsung uses its own app IDs.
+    var bundled: FavoriteApp? {
+        FavoriteApp.defaults.first { $0.id == id } ?? FavoriteApp.defaults.first { $0.name.caseInsensitiveCompare(title) == .orderedSame }
+    }
+}
+
+/// Each TV's pinned apps, in grid order, kept in UserDefaults by TV id.
+/// A TV with no entry hasn't been set up yet; the app seeds it from `FavoriteApp.defaults`.
+enum PinnedApps {
+    private static let key = "pinnedApps"
+
+    static func load() -> [String: [PinnedApp]] {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [:] }
+        return (try? JSONDecoder().decode([String: [PinnedApp]].self, from: data)) ?? [:]
+    }
+
+    static func save(_ pins: [String: [PinnedApp]]) {
+        guard let data = try? JSONEncoder().encode(pins) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+}
+
+/// A bundled logo for a well-known app, and the starting Favorites for a newly paired TV
+/// (only the ones it actually has installed).
 struct FavoriteApp: Identifiable, Hashable {
     let id: String
     let name: String
@@ -32,6 +70,8 @@ struct FavoriteApp: Identifiable, Hashable {
         FavoriteApp(id: "com.webos.app.lgchannels", name: "LG Channels", logo: "logo-lg",
                     tile: Color(hex: 0xA50034), glyph: .white, logoSize: 34),
     ]
+
+    var pinned: PinnedApp { PinnedApp(id: id, title: name, iconURL: nil) }
 }
 
 extension SoundOutput {
@@ -42,20 +82,46 @@ extension SoundOutput {
         case .optical: return "Receiver"
         case .bluetooth: return "Headphones"
         case .headphones: return "Wired headphones"
-        case .other(let raw): return raw
+        case .other(let raw):
+            switch raw {
+            case "external_speaker": return "External speaker"
+            case "lineout": return "Line out"
+            case "tv_external_speaker": return "TV + soundbar"
+            case "tv_speaker_headphone": return "TV + headphones"
+            default: return raw.replacingOccurrences(of: "_", with: " ").capitalized
+            }
         }
     }
 
-    var systemImage: String {
+    var icon: Icon {
         switch self {
-        case .tvSpeaker: return "tv"
-        case .hdmiARC: return "hifispeaker"
-        case .optical: return "hifireceiver"
-        case .bluetooth, .headphones: return "headphones"
-        case .other: return "speaker.wave.2"
+        case .tvSpeaker: return .tv
+        case .hdmiARC: return .speaker
+        case .optical: return .receiver
+        case .bluetooth, .headphones: return .headphones
+        case .other: return .volume
         }
     }
 
-    /// The outputs offered in Sound out. Once paired, this should be the list the TV reports.
-    static let choices: [SoundOutput] = [.tvSpeaker, .hdmiARC, .bluetooth, .optical]
+    /// Common outputs, offered under "Try another output" until a TV has used them.
+    /// webOS can't list a TV's outputs, so the app learns them (see `RemoteStore.availableOutputs`).
+    static let choices: [SoundOutput] = [.tvSpeaker, .hdmiARC, .bluetooth, .optical, .headphones]
+}
+
+/// The sound outputs one TV has used (raw webOS names, in order first seen) and the ones it refused.
+struct OutputMemory: Codable, Equatable {
+    var seen: [String] = []
+    var refused: [String] = []
+
+    private static let key = "soundOutputs"
+
+    static func load() -> [String: OutputMemory] {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [:] }
+        return (try? JSONDecoder().decode([String: OutputMemory].self, from: data)) ?? [:]
+    }
+
+    static func save(_ memory: [String: OutputMemory]) {
+        guard let data = try? JSONEncoder().encode(memory) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
 }

@@ -14,17 +14,16 @@ struct SleepTimerSheet: View {
             SleepDial(endsAt: endsAt, onSet: onSet)
             ZStack {
                 if endsAt != nil {
-                    PillButton(title: "Cancel timer", systemImage: "xmark") { onSet(0) }
+                    PillButton(title: "Cancel timer", icon: .close) { onSet(0) }
                 } else if canUndo {
-                    PillButton(title: "Undo", systemImage: "arrow.uturn.backward", action: onUndo)
+                    PillButton(title: "Undo", icon: .back, action: onUndo)
                 }
             }
             .frame(height: 40)
             .animation(Theme.bounce, value: endsAt)
             .animation(Theme.bounce, value: canUndo)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 20)
+        .sheetPadding()
     }
 }
 
@@ -49,17 +48,10 @@ struct SleepDial: View {
             let end = appeared ? minutes / Self.maxMinutes * 2 * .pi : 0
 
             ZStack {
-                ForEach(0..<4, id: \.self) { hour in
-                    RingArc(
-                        startAngle: Double(hour) * .pi / 2 + 0.03,
-                        endAngle: Double(hour + 1) * .pi / 2 - 0.03,
-                        swellAngle: end,
-                        swell: swell
-                    )
-                    .fill(hour.isMultiple(of: 2) ? Theme.track : Theme.trackAlt)
-                }
+                RingArc(startAngle: 0, endAngle: 2 * .pi - 0.001, swellAngle: end, swell: swell)
+                    .fill(Theme.track)
                 RingArc(startAngle: 0, endAngle: min(end, 2 * .pi - 0.001), swellAngle: end, swell: swell)
-                    .fill(Theme.blue)
+                    .fill(Theme.accent)
                 centerLabel(remaining: remaining)
             }
             .animation(dragMinutes == nil ? Theme.settle : nil, value: end)

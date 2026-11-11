@@ -1,8 +1,22 @@
 import SwiftUI
 
-/// One row in the TV and Sound out pickers: icon tile, name, optional detail, and a 46-point slot on the right.
+/// True inside a selected ChoiceRow, whose background is the solid accent.
+/// Controls in the row's trailing slot flip their colors to stay visible.
+private struct InvertedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var isInverted: Bool {
+        get { self[InvertedKey.self] }
+        set { self[InvertedKey.self] = newValue }
+    }
+}
+
+/// One row in the TV and Sound out pickers: icon tile, name, optional detail, and a 46-point slot
+/// on the right. The selected row is a full reverse: solid accent background, no border.
 struct ChoiceRow<Trailing: View>: View {
-    let systemImage: String
+    let icon: Icon
     let title: String
     var subtitle: String?
     let isSelected: Bool
@@ -10,14 +24,14 @@ struct ChoiceRow<Trailing: View>: View {
     let trailing: Trailing
 
     init(
-        systemImage: String,
+        icon: Icon,
         title: String,
         subtitle: String? = nil,
         isSelected: Bool,
         action: @escaping () -> Void,
         @ViewBuilder trailing: () -> Trailing
     ) {
-        self.systemImage = systemImage
+        self.icon = icon
         self.title = title
         self.subtitle = subtitle
         self.isSelected = isSelected
@@ -26,25 +40,24 @@ struct ChoiceRow<Trailing: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             Button(action: action) {
                 HStack(spacing: 14) {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 18, weight: .medium))
-                        .frame(width: 42, height: 42)
+                    IconView(icon, size: 22)
+                        .frame(width: 44, height: 44)
                         .background(
-                            isSelected ? Theme.blue.opacity(0.16) : Theme.iconTile,
-                            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            isSelected ? Theme.onAccent.opacity(0.12) : Theme.iconTile,
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                         )
-                        .foregroundStyle(isSelected ? Theme.blue : Theme.muted)
-                    VStack(alignment: .leading, spacing: 2) {
+                        .foregroundStyle(isSelected ? Theme.onAccent : Theme.muted)
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(title)
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(Theme.text)
+                            .foregroundStyle(isSelected ? Theme.onAccent : Theme.text)
                         if let subtitle {
                             Text(subtitle)
                                 .font(.system(size: 13))
-                                .foregroundStyle(Theme.muted)
+                                .foregroundStyle(isSelected ? Theme.onAccent.opacity(0.62) : Theme.muted)
                                 .lineLimit(1)
                                 .contentTransition(.opacity)
                         }
@@ -55,15 +68,15 @@ struct ChoiceRow<Trailing: View>: View {
             }
             .buttonStyle(PressScaleStyle())
 
-            trailing.frame(width: 46, height: 46)
+            trailing
+                .frame(minWidth: 46, minHeight: 46)
+                .environment(\.isInverted, isSelected)
         }
-        .padding(6)
-        .background(Theme.raised, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(isSelected ? Theme.blue : .clear, lineWidth: 1.5)
-        )
-        .animation(.easeOut(duration: 0.25), value: isSelected)
+        .padding(.leading, 12)
+        .padding(.trailing, 10)
+        .padding(.vertical, 10)
+        .background(isSelected ? Theme.accent : Theme.raised, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .animation(.easeOut(duration: 0.22), value: isSelected)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -72,14 +85,16 @@ struct ChoiceRow<Trailing: View>: View {
 /// The selection circle for Sound out: an empty ring that springs into a blue check.
 struct RadioMark: View {
     let isOn: Bool
+    @Environment(\.isInverted) private var inverted
 
     var body: some View {
+        let fill = inverted ? Theme.onAccent : Theme.accent
+        let mark = inverted ? Theme.accent : Theme.onAccent
         ZStack {
-            Circle().strokeBorder(isOn ? Theme.blue : Theme.mutedFill, lineWidth: 2)
-            Circle().fill(Theme.blue).opacity(isOn ? 1 : 0)
-            Image(systemName: "checkmark")
-                .font(.system(size: 11, weight: .heavy))
-                .foregroundStyle(.white)
+            Circle().fill(inverted ? Theme.onAccent.opacity(0.14) : Theme.iconTile)
+            Circle().fill(fill).opacity(isOn ? 1 : 0)
+            IconView(.check, size: 16)
+                .foregroundStyle(mark)
                 .scaleEffect(isOn ? 1 : 0.4)
                 .opacity(isOn ? 1 : 0)
         }
@@ -89,19 +104,29 @@ struct RadioMark: View {
     }
 }
 
-/// The power button in each TV row: blue when the TV is on.
+/// The power button in each TV row: filled with the accent when the TV is on.
 struct RowPowerButton: View {
     let isOn: Bool
     let label: String
     let action: () -> Void
+    @Environment(\.isInverted) private var inverted
+
+    private var fill: Color {
+        if inverted { return isOn ? Theme.onAccent : Theme.onAccent.opacity(0.14) }
+        return isOn ? Theme.accent : Theme.offFill
+    }
+
+    private var glyph: Color {
+        if inverted { return isOn ? Theme.accent : Theme.onAccent }
+        return isOn ? Theme.onAccent : Theme.offGlyph
+    }
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: "power")
-                .font(.system(size: 17, weight: .semibold))
+            IconView(.power, size: 22)
                 .frame(width: 46, height: 46)
-                .background(isOn ? Theme.blue : Color(hex: 0x2C2C30), in: Circle())
-                .foregroundStyle(isOn ? .white : Color(hex: 0xC9C9CE))
+                .background(fill, in: Circle())
+                .foregroundStyle(glyph)
         }
         .buttonStyle(PressScaleStyle(scale: 0.9))
         .animation(.easeOut(duration: 0.24), value: isOn)

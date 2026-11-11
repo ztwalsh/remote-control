@@ -5,12 +5,21 @@ import Security
 public struct Pairing: Codable, Sendable, Equatable {
     public var clientKey: String
     public var certificateFingerprint: String?
+    /// The single address saved by older builds. That was often the wired one, which a TV on Wi‑Fi ignores.
     public var macAddress: String?
+    /// Every address the TV reported (Wi‑Fi first). Nil for pairings saved before this was added,
+    /// which tells the app to ask the TV again.
+    public var macAddresses: [String]?
 
-    public init(clientKey: String, certificateFingerprint: String?, macAddress: String?) {
+    public init(clientKey: String, certificateFingerprint: String?, macAddresses: [String]?) {
         self.clientKey = clientKey
         self.certificateFingerprint = certificateFingerprint
-        self.macAddress = macAddress
+        self.macAddresses = macAddresses
+    }
+
+    /// The addresses to send a wake-up packet to.
+    public var wakeAddresses: [String] {
+        macAddresses ?? [macAddress].compactMap { $0 }
     }
 }
 

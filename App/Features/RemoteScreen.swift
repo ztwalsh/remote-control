@@ -5,9 +5,10 @@ struct RemoteScreen: View {
     let store: RemoteStore
 
     @State private var sheet: Sheet?
+    @State private var editingTVID: String?
 
     enum Sheet: String, Identifiable {
-        case tvs, addTV, soundOut, sleep
+        case tvs, addTV, editTV, soundOut, sleep, navigate, allApps
         var id: String { rawValue }
     }
 
@@ -22,25 +23,24 @@ struct RemoteScreen: View {
                 }
                 .scrollIndicators(.hidden)
                 .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
-            } else {
-                OffView(
-                    tvName: tv.name,
-                    canUndo: store.undoPowerOffID == tv.id,
-                    onTurnOn: { store.setPower(true, for: tv.id) },
-                    onUndo: store.undoPowerOff
-                )
-                .transition(.opacity.combined(with: .offset(y: 12)))
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.horizontal, 22)
+        .padding(.top, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // Over the whole screen, so the power button is centered on it, not on the space below the header.
+        .overlay {
+            if !tv.isOn {
+                OffView(tvName: tv.name, onTurnOn: { store.setPower(true, for: tv.id) })
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+        }
         .background(Theme.background.ignoresSafeArea())
         .animation(Theme.settle, value: tv.isOn)
         .animation(Theme.settle, value: tv.id)
-        .preferredColorScheme(.dark)
         .sheet(item: $sheet) { kind in
             sheetContent(kind)
+                .environment(store)
                 .presentationBackground(Theme.card)
                 .presentationCornerRadius(30)
                 .presentationDragIndicator(.visible)
@@ -56,8 +56,7 @@ struct RemoteScreen: View {
                         Text(tv.name)
                             .font(.system(size: 27, weight: .semibold))
                             .contentTransition(.opacity)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 14, weight: .semibold))
+                        IconView(.chevronDown, size: 20)
                             .foregroundStyle(Theme.muted)
                     }
                     .foregroundStyle(Theme.text)
@@ -73,12 +72,11 @@ struct RemoteScreen: View {
             .accessibilityLabel("Choose TV. Current: \(tv.name)")
 
             if tv.isOn {
-                Button { store.setPower(false, for: tv.id, offerUndo: true) } label: {
-                    Image(systemName: "power")
-                        .font(.system(size: 20, weight: .semibold))
+                Button { store.setPower(false, for: tv.id) } label: {
+                    IconView(.power, size: 26)
                         .frame(width: 54, height: 54)
-                        .background(Theme.blue, in: Circle())
-                        .foregroundStyle(.white)
+                        .background(Theme.accent, in: Circle())
+                        .foregroundStyle(Theme.onAccent)
                 }
                 .buttonStyle(PressScaleStyle(scale: 0.92))
                 .transition(.scale(scale: 0.8).combined(with: .opacity))
@@ -97,18 +95,30 @@ struct RemoteScreen: View {
                 onToggleMute: store.toggleMute
             )
             HStack(spacing: 12) {
-                ToolTile(systemImage: "hifispeaker", label: "Sound out", value: tv.soundOutput.displayName) {
-                    sheet = .soundOut
+                // Samsung doesn't let other apps choose the sound output, so it gets no tile.
+                if store.supportsSoundOutput {
+                    ToolTile(icon: .speaker, label: "Sound out", value: tv.soundOutput.displayName) {
+                        sheet = .soundOut
+                    }
                 }
                 ToolTile(
-                    systemImage: "moon",
+                    icon: .moon,
                     label: "Sleep timer",
                     value: tv.sleepEndsAt.map { RemoteStore.duration(minutes: max(1, Int(($0.timeIntervalSinceNow / 60).rounded(.up)))) + " left" } ?? "Off"
                 ) {
                     sheet = .sleep
                 }
             }
-            FavoritesCard(apps: store.favorites, currentAppID: tv.foregroundAppID, onOpen: store.launch)
+            ToolTile(icon: .touch, label: "Navigate", value: "Swipe and tap") {
+                sheet = .navigate
+            }
+            FavoritesCard(
+                apps: store.favorites,
+                currentAppID: tv.foregroundAppID,
+                onOpen: store.launch(appID:),
+                onUnpin: store.unpin,
+                onShowAll: { sheet = .allApps }
+            )
         }
     }
 
@@ -117,15 +127,34 @@ struct RemoteScreen: View {
         let close = { sheet = nil }
         switch kind {
         case .tvs:
-            TVPickerSheet(store: store, onAdd: { sheet = .addTV }, onClose: close)
-                .presentationDetents([.height(420)])
+            TVPickerSheet(
+                store: store,
+                onAdd: { sheet = .addTV },
+                onRename: { id in
+                    editingTVID = id
+                    sheet = .editTV
+                },
+                onClose: close
+            )
+                .presentationDetents([.height(592)])
         case .addTV:
             AddTVSheet(store: store, onClose: close)
-                .presentationDetents([.height(440)])
+                .presentationDetents([.height(628), .large])
                 .interactiveDismissDisabled()
+        case .editTV:
+            if let id = editingTVID {
+                EditTVSheet(store: store, tvID: id, onClose: close)
+                    .presentationDetents([.height(548), .large])
+            }
+        case .navigate:
+            NavigateSheet(store: store, onClose: close)
+                .presentationDetents([.large])
+        case .allApps:
+            AllAppsSheet(store: store, onClose: close)
+                .presentationDetents([.large])
         case .soundOut:
             SoundOutSheet(store: store, onClose: close)
-                .presentationDetents([.height(400)])
+                .presentationDetents([.height(468), .large])
         case .sleep:
             SleepTimerSheet(
                 endsAt: store.selected.sleepEndsAt,
@@ -134,14 +163,14 @@ struct RemoteScreen: View {
                 onUndo: store.undoSleepCancel,
                 onClose: close
             )
-            .presentationDetents([.height(470)])
+            .presentationDetents([.height(498)])
         }
     }
 }
 
 /// Sound out and Sleep timer: an icon, a label and the current value.
 struct ToolTile: View {
-    let systemImage: String
+    let icon: Icon
     let label: String
     let value: String
     let action: () -> Void
@@ -149,9 +178,8 @@ struct ToolTile: View {
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 12) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(Theme.blue)
+                IconView(icon, size: 24)
+                    .foregroundStyle(Theme.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(label)
                         .font(.system(size: 13))
@@ -165,42 +193,25 @@ struct ToolTile: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Theme.line))
         }
         .buttonStyle(PressScaleStyle(scale: 0.97))
     }
 }
 
-/// Shown while the selected TV is off: one big button to wake it, and Undo right after turning it off.
+/// Shown while the selected TV is off: one big button to wake it, centered on the screen.
 struct OffView: View {
     let tvName: String
-    let canUndo: Bool
     let onTurnOn: () -> Void
-    let onUndo: () -> Void
 
     var body: some View {
-        VStack(spacing: 22) {
-            Spacer()
-            Button(action: onTurnOn) {
-                Image(systemName: "power")
-                    .font(.system(size: 48, weight: .regular))
-                    .frame(width: 168, height: 168)
-                    .background(Theme.card, in: Circle())
-                    .overlay(Circle().strokeBorder(Theme.lineStrong, lineWidth: 1.5))
-                    .foregroundStyle(Theme.blue)
-            }
-            .buttonStyle(PressScaleStyle(scale: 0.95))
-            .accessibilityLabel("Turn on \(tvName)")
-            ZStack {
-                if canUndo {
-                    PillButton(title: "Undo", systemImage: "arrow.uturn.backward", action: onUndo)
-                }
-            }
-            .frame(height: 38)
-            .animation(Theme.bounce, value: canUndo)
-            Spacer()
-            Spacer()
+        Button(action: onTurnOn) {
+            IconView(.power, size: 60)
+                .frame(width: 168, height: 168)
+                .background(Theme.card, in: Circle())
+                .foregroundStyle(Theme.accent)
         }
-        .frame(maxWidth: .infinity)
+        .buttonStyle(PressScaleStyle(scale: 0.95))
+        .accessibilityLabel("Turn on \(tvName)")
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

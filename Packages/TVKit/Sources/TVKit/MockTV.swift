@@ -52,6 +52,8 @@ public actor MockTV: TVControlling {
         emit(.soundOutput(output))
     }
 
+    public func press(_ button: RemoteButton) async throws {}
+
     public func events() async -> AsyncStream<TVEvent> {
         let (stream, continuation) = AsyncStream<TVEvent>.makeStream()
         let id = UUID()

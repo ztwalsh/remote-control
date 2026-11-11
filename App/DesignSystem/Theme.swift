@@ -1,21 +1,32 @@
 import SwiftUI
 
 /// Colors, radii and motion from the HTML prototype (prototype/lg-remote.html).
+/// Every color has a light and a dark value and follows the app's appearance. The colors come from
+/// the theme color chosen in Your TVs: Mono (the original black and white) or one color that tints
+/// the accent and, faintly, every surface.
 enum Theme {
-    static let background = Color(hex: 0x0B0B0C)
-    static let card = Color(hex: 0x141415)
-    static let raised = Color(hex: 0x1D1D1F)
-    static let iconTile = Color(hex: 0x2A2A2E)
-    static let line = Color.white.opacity(0.07)
-    static let lineStrong = Color.white.opacity(0.11)
-    static let text = Color(hex: 0xF2F2F3)
-    static let muted = Color(hex: 0x8B8B90)
-    static let mutedNumber = Color(hex: 0x5E5E63)
-    static let track = Color(hex: 0x2A2A2D)
-    static let trackAlt = Color(hex: 0x303034)
-    static let mutedFill = Color(hex: 0x4A4A4E)
-    static let tooltip = Color(hex: 0x161618)
-    static let blue = Color(hex: 0x0A84FF)
+    private static var palette: Palette { ThemeStore.shared.palette }
+
+    static var background: Color { palette.background }
+    static var card: Color { palette.card }
+    static var raised: Color { palette.raised }
+    static var iconTile: Color { palette.iconTile }
+    static let line = Color(light: 0x000000, dark: 0xFFFFFF, lightOpacity: 0.06, darkOpacity: 0.07)
+    static let lineStrong = Color(light: 0x000000, dark: 0xFFFFFF, lightOpacity: 0.11, darkOpacity: 0.11)
+    static var text: Color { palette.text }
+    static var muted: Color { palette.muted }
+    static var mutedNumber: Color { palette.mutedNumber }
+    static var track: Color { palette.track }
+    static var mutedFill: Color { palette.mutedFill }
+    /// The highlight: the theme color, or in Mono white in dark mode and near-black in light mode.
+    static var accent: Color { palette.accent }
+    /// Text and icons drawn on `accent`.
+    static var onAccent: Color { palette.onAccent }
+    /// Removing things.
+    static let danger = Color(light: 0xD70015, dark: 0xFF453A)
+    /// The power button in a TV row while the TV is off.
+    static var offFill: Color { palette.offFill }
+    static var offGlyph: Color { palette.offGlyph }
 
     static let cardRadius: CGFloat = 26
 
@@ -25,7 +36,31 @@ enum Theme {
     static let settle = Animation.spring(response: 0.45, dampingFraction: 0.88)
 }
 
+/// Light, dark, or following the phone. Chosen with the switch at the bottom of Your TVs.
+enum Appearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+
+    var icon: Icon {
+        switch self {
+        case .system: return .system
+        case .light: return .sun
+        case .dark: return .moon
+        }
+    }
+}
+
 extension Color {
+    /// A color that switches with light and dark mode.
+    init(light: UInt32, dark: UInt32, lightOpacity: Double = 1, darkOpacity: Double = 1) {
+        self.init(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(hex: dark, opacity: darkOpacity)
+                : UIColor(hex: light, opacity: lightOpacity)
+        })
+    }
+
     init(hex: UInt32, opacity: Double = 1) {
         self.init(
             .sRGB,
@@ -37,36 +72,49 @@ extension Color {
     }
 }
 
+extension UIColor {
+    convenience init(hex: UInt32, opacity: Double = 1) {
+        self.init(
+            red: CGFloat((hex >> 16) & 0xFF) / 255,
+            green: CGFloat((hex >> 8) & 0xFF) / 255,
+            blue: CGFloat(hex & 0xFF) / 255,
+            alpha: opacity
+        )
+    }
+}
+
 private struct CardStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).strokeBorder(Theme.line))
     }
 }
 
 extension View {
-    /// The dark rounded card used for Volume and Favorites.
+    /// The margins every sheet uses around its content.
+    func sheetPadding() -> some View {
+        padding(.horizontal, 28).padding(.top, 32)
+    }
+
+    /// The rounded card used for Volume and Favorites.
     func card() -> some View { modifier(CardStyle()) }
 }
 
 /// A small round grey button, used for mute and closing sheets.
 struct RoundIconButton: View {
-    let systemImage: String
+    let icon: Icon
     let label: String
     var isOn = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 15, weight: .semibold))
+            IconView(icon, size: 20)
                 .frame(width: 38, height: 38)
                 .background(isOn ? Theme.text : Theme.raised, in: Circle())
                 .foregroundStyle(isOn ? Theme.background : Theme.text)
-                .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -76,12 +124,12 @@ struct RoundIconButton: View {
 /// The grey pill used for Undo and Cancel timer.
 struct PillButton: View {
     let title: String
-    let systemImage: String
+    let icon: Icon
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
+            IconLabel(title: title, icon: icon)
                 .font(.system(size: 15))
                 .padding(.horizontal, 14)
                 .frame(height: 38)
@@ -94,27 +142,28 @@ struct PillButton: View {
 }
 
 /// The floating label with a caret, shown above a bar while it's being dragged.
+/// A solid reverse (the accent) so it stands out on the card in both modes.
 struct ValueTip: View {
     let text: String
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Circle().fill(Theme.blue).frame(width: 9, height: 9)
+                Circle().fill(Theme.onAccent).frame(width: 8, height: 8)
                 Text(text)
-                    .font(.system(size: 14))
+                    .font(.system(size: 14, weight: .semibold))
                     .monospacedDigit()
-                    .foregroundStyle(Theme.text)
+                    .foregroundStyle(Theme.onAccent)
             }
             .padding(.horizontal, 12)
             .frame(height: 34)
-            .background(Theme.tooltip, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.lineStrong))
+            .background(Theme.accent, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             Caret()
-                .fill(Theme.tooltip)
+                .fill(Theme.accent)
                 .frame(width: 12, height: 6)
         }
         .fixedSize()
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
     }
 }
 

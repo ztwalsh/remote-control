@@ -1,11 +1,10 @@
 import Foundation
-import Network
 
 /// Turns a TV on by broadcasting a "magic packet" to its MAC address.
 /// Needs "Turn on via Wi-Fi" (also called "Mobile TV On") enabled on the TV.
 ///
 /// iOS only lets an app broadcast with the `com.apple.developer.networking.multicast`
-/// entitlement, which has to be requested from Apple. See README.
+/// entitlement (granted for this app; see README).
 public enum WakeOnLAN {
     /// 6 × 0xFF, then the MAC address 16 times.
     public static func magicPacket(macAddress: String) throws -> Data {
@@ -24,44 +23,80 @@ public enum WakeOnLAN {
         return packet
     }
 
-    public static func send(macAddress: String, broadcast: String = "255.255.255.255", port: UInt16 = 9) async throws {
-        let packet = try magicPacket(macAddress: macAddress)
-        guard let udpPort = NWEndpoint.Port(rawValue: port) else { throw TVError.invalidMACAddress }
-        let connection = NWConnection(host: NWEndpoint.Host(broadcast), port: udpPort, using: .udp)
-        let once = ResumeOnce()
-
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            connection.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    connection.send(content: packet, completion: .contentProcessed { error in
-                        connection.cancel()
-                        once.run {
-                            if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+    /// Broadcasts a packet for each address, to the general broadcast address and to each
+    /// Wi‑Fi subnet's own (some routers drop the general one), on ports 9 and 7, a few times over:
+    /// UDP can drop packets and the TV's network chip is half asleep.
+    ///
+    /// Uses BSD sockets: Network framework doesn't support broadcast (Apple DTS guidance).
+    public static func send(macAddresses: [String], port: UInt16 = 9, repeats: Int = 3) async throws {
+        let packets = try macAddresses.map(magicPacket(macAddress:))
+        let targets = ["255.255.255.255"] + subnetBroadcastAddresses()
+        var sentAny = false
+        var lastError: Error?
+        for attempt in 0..<repeats {
+            if attempt > 0 { try await Task.sleep(for: .milliseconds(150)) }
+            for packet in packets {
+                for target in targets {
+                    for port in [port, 7] {
+                        do {
+                            try sendOnce(packet, to: target, port: port)
+                            sentAny = true
+                        } catch {
+                            lastError = error
                         }
-                    })
-                case .failed(let error):
-                    connection.cancel()
-                    once.run { continuation.resume(throwing: error) }
-                default:
-                    break
+                    }
                 }
             }
-            connection.start(queue: .global(qos: .userInitiated))
         }
+        if !sentAny, let lastError { throw lastError }
     }
-}
 
-/// Guards a continuation against being resumed twice by racing callbacks.
-final class ResumeOnce: @unchecked Sendable {
-    private let lock = NSLock()
-    private var done = false
+    /// The broadcast address of each active IPv4 interface that supports broadcast, such as Wi‑Fi.
+    static func subnetBroadcastAddresses() -> [String] {
+        var head: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&head) == 0, let first = head else { return [] }
+        defer { freeifaddrs(head) }
+        var results: [String] = []
+        for pointer in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let entry = pointer.pointee
+            let flags = Int32(entry.ifa_flags)
+            guard flags & IFF_UP != 0, flags & IFF_BROADCAST != 0, flags & IFF_LOOPBACK == 0,
+                  let address = entry.ifa_dstaddr, address.pointee.sa_family == sa_family_t(AF_INET)
+            else { continue }
+            var host = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+            let ok = address.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { inet -> Bool in
+                var addr = inet.pointee.sin_addr
+                return inet_ntop(AF_INET, &addr, &host, socklen_t(INET_ADDRSTRLEN)) != nil
+            }
+            let text = String(cString: host)
+            if ok, !text.isEmpty, text != "0.0.0.0", !results.contains(text) { results.append(text) }
+        }
+        return results
+    }
 
-    func run(_ body: () -> Void) {
-        lock.lock()
-        let first = !done
-        done = true
-        lock.unlock()
-        if first { body() }
+    private static func sendOnce(_ packet: Data, to broadcast: String, port: UInt16) throws {
+        let fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+        guard fd >= 0 else { throw TVError.server("socket: \(String(cString: strerror(errno)))") }
+        defer { close(fd) }
+
+        var enable: Int32 = 1
+        guard setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &enable, socklen_t(MemoryLayout<Int32>.size)) == 0 else {
+            throw TVError.server("SO_BROADCAST: \(String(cString: strerror(errno)))")
+        }
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = port.bigEndian
+        guard inet_pton(AF_INET, broadcast, &address.sin_addr) == 1 else { throw TVError.invalidResponse }
+
+        let sent = packet.withUnsafeBytes { bytes in
+            withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    sendto(fd, bytes.baseAddress, bytes.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                }
+            }
+        }
+        guard sent == packet.count else { throw TVError.server("sendto: \(String(cString: strerror(errno)))") }
     }
 }

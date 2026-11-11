@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 import SwiftUI
 import TVKit
 
@@ -22,9 +23,10 @@ struct TVState: Identifiable, Equatable {
 final class RemoteStore {
     var tvs: [TVState]
     var selectedID: String
-    let favorites: [FavoriteApp] = FavoriteApp.defaults
-    /// The TV that was just turned off from the main screen, while Undo is offered.
-    private(set) var undoPowerOffID: String?
+    /// The apps installed on each TV, once fetched. Nil until then.
+    private(set) var installedApps: [String: [LaunchPoint]] = [:]
+    /// Each TV's pinned apps. A TV with no entry shows the default favorites.
+    private var pins: [String: [PinnedApp]] = PinnedApps.load()
     /// A sleep timer that was just cancelled, while Undo is offered.
     private(set) var undoSleep: (id: String, endsAt: Date)?
 
@@ -35,10 +37,10 @@ final class RemoteStore {
 
     private var controllers: [String: any TVControlling]
     /// The connection to each paired TV. Example TVs have none.
-    private var clients: [String: SSAPClient]
+    private var clients: [String: any TVSession]
     private let pairings = PairingStore()
     /// The connection being paired in the Add a TV sheet, so it can be cancelled.
-    private var pairingClient: SSAPClient?
+    private var pairingClient: (any TVSession)?
     private var pendingVolume: [String: Int] = [:]
     private var sendingVolume: Set<String> = []
     private var lastLocalVolumeChange: [String: Date] = [:]
@@ -47,7 +49,7 @@ final class RemoteStore {
     private var listeners: [String: Task<Void, Never>] = [:]
     private var started = false
 
-    init(tvs: [TVState], controllers: [String: any TVControlling], clients: [String: SSAPClient] = [:], isDemo: Bool = false) {
+    init(tvs: [TVState], controllers: [String: any TVControlling], clients: [String: any TVSession] = [:], isDemo: Bool = false) {
         self.tvs = tvs
         selectedID = tvs.first?.id ?? ""
         self.controllers = controllers
@@ -64,11 +66,10 @@ final class RemoteStore {
     func select(_ id: String) {
         guard tvs.contains(where: { $0.id == id }) else { return }
         selectedID = id
-        undoPowerOffID = nil
         undoSleep = nil
     }
 
-    func setPower(_ isOn: Bool, for id: String, offerUndo: Bool = false) {
+    func setPower(_ isOn: Bool, for id: String) {
         update(id) { tv in
             tv.isOn = isOn
             if !isOn {
@@ -77,18 +78,6 @@ final class RemoteStore {
             }
         }
         if !isOn { sleepTasks[id]?.cancel() }
-
-        undoTasks["power"]?.cancel()
-        if !isOn && offerUndo {
-            undoPowerOffID = id
-            undoTasks["power"] = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(5))
-                guard !Task.isCancelled else { return }
-                self?.undoPowerOffID = nil
-            }
-        } else {
-            undoPowerOffID = nil
-        }
 
         guard let controller = controllers[id] else { return }
         Task {
@@ -100,11 +89,6 @@ final class RemoteStore {
                 try? await controller.powerOff()
             }
         }
-    }
-
-    func undoPowerOff() {
-        guard let id = undoPowerOffID else { return }
-        setPower(true, for: id)
     }
 
     // MARK: - Volume
@@ -146,25 +130,235 @@ final class RemoteStore {
 
     // MARK: - Sound out
 
-    func setSoundOutput(_ output: SoundOutput) {
+    /// What each TV's outputs are known to be. webOS has no call that lists them, so the app keeps
+    /// every output a TV has reported or accepted, and every one it refused.
+    private(set) var outputMemory: [String: OutputMemory] = OutputMemory.load()
+
+    /// False for Samsung, which doesn't let other apps choose where its sound goes.
+    var supportsSoundOutput: Bool {
+        controllers[selectedID]?.supportsSoundOutput ?? true
+    }
+
+    /// The selected TV's outputs: TV speakers, then every output it has used. The example TVs show all.
+    var availableOutputs: [SoundOutput] {
+        if isDemo { return SoundOutput.choices }
+        let seen = (outputMemory[selectedID]?.seen ?? []).map(SoundOutput.init(rawValue:))
+        var list: [SoundOutput] = [.tvSpeaker]
+        for output in seen + [selected.soundOutput] where !list.contains(output) { list.append(output) }
+        return list
+    }
+
+    /// Common outputs this TV hasn't used or refused yet, offered to try.
+    var untriedOutputs: [SoundOutput] {
+        if isDemo { return [] }
+        let refused = Set(outputMemory[selectedID]?.refused ?? [])
+        return SoundOutput.choices.filter { !availableOutputs.contains($0) && !refused.contains($0.rawValue) }
+    }
+
+    /// Switches the selected TV's output. Returns false, and puts the old output back, if the TV refuses;
+    /// a refused output is then hidden for that TV.
+    @discardableResult
+    func setSoundOutput(_ output: SoundOutput) async -> Bool {
         let id = selectedID
+        let previous = selected.soundOutput
         update(id) { $0.soundOutput = output }
-        let controller = controllers[id]
-        Task { try? await controller?.setSoundOutput(output) }
+        guard let controller = controllers[id] else { return true }
+        do {
+            try await controller.setSoundOutput(output)
+            rememberOutput(output, for: id)
+            return true
+        } catch {
+            update(id) { $0.soundOutput = previous }
+            if case TVError.server = error {
+                var memory = outputMemory[id] ?? OutputMemory()
+                if !memory.seen.contains(output.rawValue), !memory.refused.contains(output.rawValue) {
+                    memory.refused.append(output.rawValue)
+                }
+                setOutputMemory(memory, for: id)
+            }
+            return false
+        }
+    }
+
+    private func rememberOutput(_ output: SoundOutput, for id: String) {
+        var memory = outputMemory[id] ?? OutputMemory()
+        guard !memory.seen.contains(output.rawValue) else { return }
+        memory.seen.append(output.rawValue)
+        memory.refused.removeAll { $0 == output.rawValue }
+        setOutputMemory(memory, for: id)
+    }
+
+    private func setOutputMemory(_ memory: OutputMemory, for id: String) {
+        outputMemory[id] = memory
+        guard !isDemo else { return }
+        OutputMemory.save(outputMemory.filter { key, _ in clients[key] != nil })
     }
 
     // MARK: - Apps
 
-    func launch(_ app: FavoriteApp) {
+    func launch(appID: String) {
         let id = selectedID
-        update(id) { $0.foregroundAppID = app.id }
+        update(id) { $0.foregroundAppID = appID }
         let controller = controllers[id]
-        Task { try? await controller?.launch(appID: app.id) }
+        Task { try? await controller?.launch(appID: appID) }
     }
 
     func appName(for appID: String?) -> String? {
         guard let appID else { return nil }
-        return favorites.first { $0.id == appID }?.name
+        return installedApps[selectedID]?.first { $0.id == appID }?.title
+            ?? pins[selectedID]?.first { $0.id == appID }?.title
+            ?? FavoriteApp.defaults.first { $0.id == appID }?.name
+    }
+
+    @ObservationIgnored private var icons: [URL: UIImage] = [:]
+    @ObservationIgnored private var iconLoads: [URL: Task<UIImage?, Never>] = [:]
+
+    /// An app icon the TV serves, fetched through that TV's trusted connection and kept in memory.
+    func icon(for url: URL) async -> UIImage? {
+        if let cached = icons[url] { return cached }
+        if let loading = iconLoads[url] { return await loading.value }
+        // Only LG serves icons; Samsung apps show their bundled logo or first letter.
+        let client = clients.values.lazy.compactMap { $0 as? SSAPClient }.first { $0.host == url.host }
+        let load = Task<UIImage?, Never> {
+            let data: Data?
+            if let client {
+                data = try? await client.resource(url)
+            } else {
+                data = try? await URLSession.shared.data(from: url).0
+            }
+            return data.flatMap(UIImage.init(data:))
+        }
+        iconLoads[url] = load
+        let image = await load.value
+        iconLoads[url] = nil
+        if let image { icons[url] = image }
+        return image
+    }
+
+    /// True when this input is what the selected TV is showing.
+    func foregroundIsInput(_ appID: String) -> Bool {
+        selected.foregroundAppID == appID
+    }
+
+    /// The selected TV's Favorites grid.
+    var favorites: [PinnedApp] {
+        pins[selectedID] ?? FavoriteApp.defaults.map(\.pinned)
+    }
+
+    func isPinned(_ appID: String) -> Bool {
+        favorites.contains { $0.id == appID }
+    }
+
+    /// Adds the app to the end of the selected TV's Favorites, or removes it.
+    func togglePin(_ app: LaunchPoint) {
+        var list = favorites
+        if let index = list.firstIndex(where: { $0.id == app.id }) {
+            list.remove(at: index)
+        } else {
+            list.append(PinnedApp(app))
+        }
+        setPins(list, for: selectedID)
+    }
+
+    func unpin(_ appID: String) {
+        setPins(favorites.filter { $0.id != appID }, for: selectedID)
+    }
+
+    func movePin(from source: IndexSet, to destination: Int) {
+        var list = favorites
+        list.move(fromOffsets: source, toOffset: destination)
+        setPins(list, for: selectedID)
+    }
+
+    /// Fetches the selected TV's installed apps (or refreshes them).
+    func loadApps() async {
+        let id = selectedID
+        if isDemo {
+            installedApps[id] = FavoriteApp.defaults.map { LaunchPoint(id: $0.id, title: $0.name, iconURL: nil) }
+            return
+        }
+        guard let controller = controllers[id], let points = try? await controller.launchPoints() else { return }
+        applyInstalled(points, to: id)
+    }
+
+    private func applyInstalled(_ points: [LaunchPoint], to id: String) {
+        // A TV can list one app more than once (one entry per launch point); keep the first.
+        var seen = Set<String>()
+        let apps = points.filter { seen.insert($0.id).inserted }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        installedApps[id] = apps
+        if let current = pins[id] {
+            // Keep names and icon addresses current (the icon address includes the TV's IP).
+            let byID = Dictionary(uniqueKeysWithValues: apps.map { ($0.id, $0) })
+            setPins(current.map { pin in byID[pin.id].map(PinnedApp.init) ?? pin }, for: id)
+        } else {
+            // First time: start from the default favorites this TV actually has, matched by ID (LG)
+            // or by name (Samsung uses its own IDs).
+            let seeded = FavoriteApp.defaults.compactMap { favorite in
+                apps.first { $0.id == favorite.id }
+                    ?? apps.first { $0.title.caseInsensitiveCompare(favorite.name) == .orderedSame }
+            }
+            setPins(seeded.map(PinnedApp.init), for: id)
+        }
+    }
+
+    private func setPins(_ list: [PinnedApp], for id: String) {
+        pins[id] = list
+        guard !isDemo else { return }
+        PinnedApps.save(pins.filter { key, _ in clients[key] != nil })
+    }
+
+    // MARK: - Navigate
+
+    /// Set when the TV refuses remote navigation, which happens for TVs paired before it
+    /// existed: their pairing didn't ask for that permission.
+    private(set) var pointerRefused = false
+
+    func press(_ button: RemoteButton) {
+        pointer { try await $0.press(button) }
+    }
+
+    private func pointer(_ action: @escaping @Sendable (any TVControlling) async throws -> Void) {
+        guard let controller = controllers[selectedID] else { return }
+        Task {
+            do {
+                try await action(controller)
+                pointerRefused = false
+            } catch TVError.server(let message) where message.localizedCaseInsensitiveContains("permission") {
+                pointerRefused = true
+            } catch {}
+        }
+    }
+
+    /// Pairs the selected TV again, so it grants permissions added since it was first paired.
+    /// The TV shows its "Allow this device?" prompt. Keeps the TV's place, name and settings;
+    /// if pairing fails, the old pairing stays as it was.
+    func repairSelected(onPrompt: @escaping @MainActor () -> Void) async throws {
+        let id = selectedID
+        guard let saved = SavedTVs.load().first(where: { $0.id == id }), saved.kind == .lg else { return }
+        let client = SSAPClient(host: saved.host)
+        pairingClient = client
+        defer { pairingClient = nil }
+        let prompts = Task { @MainActor in
+            for await state in client.states where state == .awaitingPairing { onPrompt() }
+        }
+        defer { prompts.cancel() }
+
+        let clientKey = try await client.connect(clientKey: nil)
+        let fingerprint = await client.certificateFingerprint
+        let fetched = (try? await WebOSTV(client: client, macAddresses: []).fetchMACAddresses()) ?? []
+        let macAddresses = fetched.isEmpty ? (pairings.load(for: id)?.wakeAddresses ?? []) : fetched
+        try pairings.save(Pairing(clientKey: clientKey, certificateFingerprint: fingerprint, macAddresses: macAddresses), for: id)
+
+        listeners.removeValue(forKey: id)?.cancel()
+        if let old = clients[id] { Task { await old.disconnect() } }
+        let controller = WebOSTV(client: client, macAddresses: macAddresses)
+        clients[id] = client
+        controllers[id] = controller
+        update(id) { $0.isOn = true }
+        pointerRefused = false
+        await refresh(id, from: controller)
+        listen(to: id, controller)
     }
 
     // MARK: - Sleep timer
@@ -228,12 +422,32 @@ final class RemoteStore {
         return rest == 0 ? "\(hours) hr" : "\(hours) hr \(rest) min"
     }
 
+    // MARK: - Finding TVs
+
+    /// LG and Samsung TVs on the Wi-Fi that aren't paired yet. Takes about three seconds.
+    func discoverTVs() async -> [DiscoveredTV] {
+        let paired = Set(SavedTVs.load().map(\.host))
+        let found = (try? await SSDPBrowser().search()) ?? []
+        return found.filter { !paired.contains($0.host) }
+    }
+
     // MARK: - Paired TVs
 
     /// Pairs with the TV at `host` and selects it. The first time, the TV asks "Allow this device?";
     /// `onPrompt` runs when it does. Throws if the TV can't be reached or the prompt is declined.
-    func addTV(name: String, host: String, onPrompt: @escaping @MainActor () -> Void) async throws {
-        let client = SSAPClient(host: host)
+    /// `brand` is nil when the address was typed; the app then asks the TV what it is.
+    /// Vizio pairs with a PIN the TV shows: `onPIN` asks for it (nil cancels).
+    func addTV(
+        name: String, host: String, brand: TVBrand?,
+        onPrompt: @escaping @MainActor () -> Void,
+        onPIN: @escaping @MainActor @Sendable () async -> String?
+    ) async throws {
+        let kind: TVBrand
+        if let brand { kind = brand } else { kind = await Self.detectBrand(host: host) }
+        let client = Self.session(kind, host: host, pairing: nil)
+        if let vizio = client as? VizioClient {
+            await vizio.setPINProvider { await onPIN() }
+        }
         pairingClient = client
         defer { pairingClient = nil }
         let prompts = Task { @MainActor in
@@ -243,10 +457,11 @@ final class RemoteStore {
 
         let clientKey = try await client.connect(clientKey: nil)
         let fingerprint = await client.certificateFingerprint
-        let macAddress = try? await WebOSTV(client: client, macAddress: nil).fetchMACAddress()
+        let fetched = await Self.fetchMACAddresses(client)
+        let macAddresses = fetched.isEmpty ? nil : fetched
         let id = UUID().uuidString
-        try pairings.save(Pairing(clientKey: clientKey, certificateFingerprint: fingerprint, macAddress: macAddress), for: id)
-        SavedTVs.save(SavedTVs.load() + [SavedTV(id: id, name: name, host: host)])
+        try pairings.save(Pairing(clientKey: clientKey, certificateFingerprint: fingerprint, macAddresses: macAddresses), for: id)
+        SavedTVs.save(SavedTVs.load() + [SavedTV(id: id, name: name, host: host, brand: kind)])
 
         if isDemo {
             listeners.values.forEach { $0.cancel() }
@@ -255,7 +470,7 @@ final class RemoteStore {
             tvs = []
             isDemo = false
         }
-        let controller = WebOSTV(client: client, macAddress: macAddress)
+        let controller = Self.controller(for: client, macAddresses: macAddresses ?? [])
         clients[id] = client
         controllers[id] = controller
         tvs.append(TVState(id: id, name: name, isOn: true, volume: 0, isMuted: false, soundOutput: .tvSpeaker))
@@ -270,6 +485,19 @@ final class RemoteStore {
         Task { await client.disconnect() }
     }
 
+    /// Renames a TV in this app. A blank name keeps the old one.
+    func renameTV(_ id: String, to name: String) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        update(id) { $0.name = name }
+        guard !isDemo else { return }
+        SavedTVs.save(SavedTVs.load().map { saved in
+            var saved = saved
+            if saved.id == id { saved.name = name }
+            return saved
+        })
+    }
+
     /// Forgets a paired TV. Removing the last one brings back the example TVs.
     func removeTV(_ id: String) {
         guard let client = clients.removeValue(forKey: id) else { return }
@@ -278,6 +506,11 @@ final class RemoteStore {
         controllers[id] = nil
         pairings.remove(for: id)
         SavedTVs.save(SavedTVs.load().filter { $0.id != id })
+        outputMemory[id] = nil
+        OutputMemory.save(outputMemory.filter { key, _ in clients[key] != nil })
+        pins[id] = nil
+        installedApps[id] = nil
+        PinnedApps.save(pins.filter { key, _ in clients[key] != nil })
         tvs.removeAll { $0.id == id }
 
         if tvs.isEmpty {
@@ -307,15 +540,36 @@ final class RemoteStore {
         // Stop listening first: reconnecting closes the old socket, which reports a disconnect.
         listeners.removeValue(forKey: id)?.cancel()
         do {
-            _ = try await client.connect(clientKey: pairings.load(for: id)?.clientKey)
+            let stored = pairings.load(for: id)
+            let key = try await client.connect(clientKey: stored?.clientKey)
+            // Samsung can issue a new token; keep the latest so the TV doesn't ask again.
+            if var pairing = stored, !key.isEmpty, key != pairing.clientKey {
+                pairing.clientKey = key
+                try? pairings.save(pairing, for: id)
+            }
         } catch {
             if markOffOnFailure { update(id) { $0.isOn = false } }
             return false
         }
         update(id) { $0.isOn = true }
-        await refresh(id, from: controller)
-        listen(to: id, controller)
+        let current = await backfillMACAddress(id, client: client) ?? controller
+        await refresh(id, from: current)
+        listen(to: id, current)
         return true
+    }
+
+    /// Pairing may have saved no MAC addresses (the TV didn't answer then), or, in older builds,
+    /// only the wired one, which a TV on Wi‑Fi ignores. Ask again on each connect until both are known.
+    /// Returns the new controller when the addresses were found.
+    private func backfillMACAddress(_ id: String, client: any TVSession) async -> (any TVControlling)? {
+        guard !(client is VizioClient), var pairing = pairings.load(for: id), pairing.macAddresses?.isEmpty ?? true else { return nil }
+        let macAddresses = await Self.fetchMACAddresses(client)
+        guard !macAddresses.isEmpty else { return nil }
+        pairing.macAddresses = macAddresses
+        try? pairings.save(pairing, for: id)
+        let controller = Self.controller(for: client, macAddresses: macAddresses)
+        controllers[id] = controller
+        return controller
     }
 
     /// webOS takes several seconds to boot after Wake-on-LAN. Keeps trying for about 20 seconds.
@@ -329,15 +583,18 @@ final class RemoteStore {
     }
 
     private func refresh(_ id: String, from controller: any TVControlling) async {
+        if let points = try? await controller.launchPoints() { applyInstalled(points, to: id) }
         if let status = try? await controller.volume() {
             update(id) { tv in
                 tv.volume = status.level
                 tv.isMuted = status.muted
                 if let output = status.soundOutput { tv.soundOutput = output }
             }
+            if let output = status.soundOutput { rememberOutput(output, for: id) }
         }
         if let output = try? await controller.soundOutput() {
             update(id) { $0.soundOutput = output }
+            rememberOutput(output, for: id)
         }
         if let appID = try? await controller.foregroundAppID() {
             update(id) { $0.foregroundAppID = appID }
@@ -379,6 +636,7 @@ final class RemoteStore {
             }
         case .soundOutput(let output):
             update(id) { $0.soundOutput = output }
+            if !isDemo { rememberOutput(output, for: id) }
         case .foregroundApp(let appID):
             update(id) { $0.foregroundAppID = appID }
         case .disconnected:
@@ -400,18 +658,53 @@ extension RemoteStore {
         let saved = SavedTVs.load()
         guard !saved.isEmpty else { return demo() }
         let pairings = PairingStore()
-        var clients: [String: SSAPClient] = [:]
+        var clients: [String: any TVSession] = [:]
         var controllers: [String: any TVControlling] = [:]
         for tv in saved {
             let pairing = pairings.load(for: tv.id)
-            let client = SSAPClient(host: tv.host, pinnedFingerprint: pairing?.certificateFingerprint)
+            let client = session(tv.kind, host: tv.host, pairing: pairing)
             clients[tv.id] = client
-            controllers[tv.id] = WebOSTV(client: client, macAddress: pairing?.macAddress)
+            controllers[tv.id] = controller(for: client, macAddresses: pairing?.wakeAddresses ?? [])
         }
         let tvs = saved.map {
             TVState(id: $0.id, name: $0.name, isOn: false, volume: 0, isMuted: false, soundOutput: .tvSpeaker)
         }
         return RemoteStore(tvs: tvs, controllers: controllers, clients: clients)
+    }
+
+    // MARK: - Brands
+
+    static func session(_ brand: TVBrand, host: String, pairing: Pairing?) -> any TVSession {
+        switch brand {
+        case .lg: return SSAPClient(host: host, pinnedFingerprint: pairing?.certificateFingerprint)
+        case .samsung: return SamsungClient(host: host, pinnedFingerprint: pairing?.certificateFingerprint)
+        case .vizio: return VizioClient(host: host, pinnedFingerprint: pairing?.certificateFingerprint)
+        }
+    }
+
+    /// For a typed address: Samsung and Vizio answer simple requests without pairing; anything else is LG.
+    static func detectBrand(host: String) async -> TVBrand {
+        async let samsung = SamsungDeviceInfo.fetch(host: host)
+        async let vizio = VizioClient.probe(host: host)
+        if await samsung != nil { return .samsung }
+        if await vizio { return .vizio }
+        return .lg
+    }
+
+    static func controller(for session: any TVSession, macAddresses: [String]) -> any TVControlling {
+        if let samsung = session as? SamsungClient { return SamsungTV(client: samsung, macAddresses: macAddresses) }
+        if let vizio = session as? VizioClient { return VizioTV(client: vizio) }
+        return WebOSTV(client: session as! SSAPClient, macAddresses: macAddresses)
+    }
+
+    /// The addresses Wake-on-LAN needs. LG reports them once connected; Samsung on its info page.
+    /// Vizio wakes with its power key instead.
+    static func fetchMACAddresses(_ session: any TVSession) async -> [String] {
+        if let lg = session as? SSAPClient {
+            return (try? await WebOSTV(client: lg, macAddresses: []).fetchMACAddresses()) ?? []
+        }
+        if session is VizioClient { return [] }
+        return [await SamsungDeviceInfo.fetch(host: session.host)?.wifiMAC].compactMap { $0 }
     }
 
     /// Three example TVs backed by `MockTV`, so the app runs in the simulator before pairing exists.

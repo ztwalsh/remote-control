@@ -30,7 +30,7 @@ struct VolumeCard: View {
                 Spacer()
                 HStack(spacing: 8) {
                     RoundIconButton(
-                        systemImage: isMuted ? "speaker.slash" : "speaker.wave.1",
+                        icon: isMuted ? .volumeOff : .volume,
                         label: isMuted ? "Unmute" : "Mute",
                         isOn: isMuted,
                         action: onToggleMute
@@ -51,20 +51,19 @@ private struct VolumeStepper: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            step("minus", label: "Volume down", by: -1)
+            step(.minus, label: "Volume down", by: -1)
             Rectangle().fill(Theme.lineStrong).frame(width: 1, height: 18)
-            step("plus", label: "Volume up", by: 1)
+            step(.plus, label: "Volume up", by: 1)
         }
         .frame(height: 38)
         .background(Theme.raised, in: Capsule())
     }
 
-    private func step(_ symbol: String, label: String, by delta: Int) -> some View {
+    private func step(_ symbol: Icon, label: String, by delta: Int) -> some View {
         Button {
             onStep(delta)
         } label: {
-            Image(systemName: symbol)
-                .font(.system(size: 15, weight: .semibold))
+            IconView(symbol, size: 20)
                 .frame(width: 44, height: 38)
                 .contentShape(Rectangle())
         }
@@ -95,7 +94,7 @@ struct VolumeBar: View {
                 BulgeCapsule(start: 0, end: 1, center: swellCenter, amplitude: swell)
                     .fill(Theme.track)
                 BulgeCapsule(start: 0, end: fraction, center: swellCenter, amplitude: swell)
-                    .fill(isMuted ? Theme.mutedFill : Theme.blue)
+                    .fill(isMuted ? Theme.mutedFill : Theme.accent)
                     .animation(isDragging ? nil : Theme.settle, value: fraction)
                 ValueTip(text: "\(value)")
                     .position(x: min(max(swellCenter * width, 44), width - 44), y: 20)
