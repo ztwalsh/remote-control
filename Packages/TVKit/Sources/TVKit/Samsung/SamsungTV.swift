@@ -175,6 +175,16 @@ public final class SamsungTV: TVControlling {
 
     // MARK: - Buttons
 
+    public var supportsKeyboard: Bool { true }
+
+    public func replaceText(_ old: String, with new: String) async throws {
+        try await client.sendText(new)
+    }
+
+    public func submitText() async throws {
+        try await client.endText()
+    }
+
     public func press(_ button: RemoteButton) async throws {
         try await client.key(Self.key(for: button))
     }
@@ -201,6 +211,7 @@ public final class SamsungTV: TVControlling {
     /// remote) and reports when the connection drops.
     public func events() async -> AsyncStream<TVEvent> {
         let changes = await client.connectionChanges()
+        let keyboard = await client.keyboardChanges()
         let rendering = rendering
         let memory = memory
         return AsyncStream { continuation in
@@ -222,9 +233,13 @@ public final class SamsungTV: TVControlling {
                     }
                 }
             }
+            let typing = Task {
+                for await isOpen in keyboard { continuation.yield(.keyboard(isOpen)) }
+            }
             continuation.onTermination = { _ in
                 watch.cancel()
                 poll.cancel()
+                typing.cancel()
             }
         }
     }

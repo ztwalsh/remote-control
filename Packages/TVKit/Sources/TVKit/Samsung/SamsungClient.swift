@@ -22,6 +22,7 @@ public actor SamsungClient: TVSession {
     private var connected: CheckedContinuation<String, Error>?
     private var replies: [String: [CheckedContinuation<JSONValue, Error>]] = [:]
     private var listeners: [UUID: AsyncStream<Bool>.Continuation] = [:]
+    private var keyboardListeners: [UUID: AsyncStream<Bool>.Continuation] = [:]
     private let stateContinuation: AsyncStream<ConnectionState>.Continuation
 
     public init(host: String, pinnedFingerprint: String? = nil, token: String? = nil) {
@@ -113,7 +114,36 @@ public actor SamsungClient: TVSession {
         return stream
     }
 
+    /// True when the TV opens its on-screen keyboard for a text field, false when it closes it.
+    public func keyboardChanges() -> AsyncStream<Bool> {
+        let (stream, continuation) = AsyncStream<Bool>.makeStream()
+        let id = UUID()
+        keyboardListeners[id] = continuation
+        continuation.onTermination = { [weak self] _ in Task { await self?.removeKeyboardListener(id) } }
+        return stream
+    }
+
     // MARK: - Commands
+
+    /// Sets the text in the TV's focused field. Samsung takes the whole text each time.
+    public func sendText(_ text: String) async throws {
+        try await send(.object([
+            "method": "ms.remote.control",
+            "params": .object([
+                "Cmd": .string(Data(text.utf8).base64EncodedString()),
+                "DataOfCmd": "base64",
+                "TypeOfRemote": "SendInputString",
+            ]),
+        ]))
+    }
+
+    /// Finishes typing, like the Done key on the TV's keyboard.
+    public func endText() async throws {
+        try await send(.object([
+            "method": "ms.remote.control",
+            "params": .object(["TypeOfRemote": "SendInputEnd"]),
+        ]))
+    }
 
     /// Turns on a TV in network standby by pressing its power key. The connection dropped when
     /// the TV went off, so this reconnects first, with the saved token so the TV doesn't ask again.
@@ -235,6 +265,10 @@ public actor SamsungClient: TVSession {
         case "ms.channel.unauthorized", "ms.channel.timeOut":
             connected?.resume(throwing: TVError.pairingRejected)
             connected = nil
+        case "ms.remote.imeStart":
+            keyboardListeners.values.forEach { $0.yield(true) }
+        case "ms.remote.imeEnd", "ms.remote.imeDone":
+            keyboardListeners.values.forEach { $0.yield(false) }
         default:
             guard var waiting = replies[event], !waiting.isEmpty else { return }
             waiting.removeFirst().resume(returning: message["data"] ?? .null)
@@ -257,6 +291,10 @@ public actor SamsungClient: TVSession {
 
     private func removeListener(_ id: UUID) {
         listeners[id] = nil
+    }
+
+    private func removeKeyboardListener(_ id: UUID) {
+        keyboardListeners[id] = nil
     }
 }
 

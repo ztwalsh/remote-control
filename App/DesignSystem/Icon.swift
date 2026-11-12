@@ -3,13 +3,13 @@ import SwiftUI
 /// The app's icons, from Central Icons (round, 2px radius, 2px stroke), stored as vector PDFs
 /// in Assets.xcassets/Icons and drawn as templates so they take the surrounding color.
 ///
-/// Central has no power or media icons, so those are SF Symbols (`systemName`).
+/// Central has no power, media or keyboard icons, so those are SF Symbols (`systemName`).
 enum Icon: String {
     case tv, edit, back, close, pin, pinFill = "pin-fill", unpin, search, check, trash, plus, minus, moon, home
     case sun, system, speaker, receiver, headphones, volume, volumeOff = "volume-off", touch, refresh
     case chevronDown = "chevron-down", arrowUp = "arrow-up", arrowDown = "arrow-down"
     case arrowLeft = "arrow-left", arrowRight = "arrow-right"
-    case power, play, pause, rewind, fastForward = "fast-forward"
+    case power, play, pause, rewind, fastForward = "fast-forward", keyboard
 
     /// The asset name, for places that need one (menus, labels).
     var assetName: String { "icon-\(rawValue)" }
@@ -22,6 +22,7 @@ enum Icon: String {
         case .pause: return "pause.fill"
         case .rewind: return "backward.fill"
         case .fastForward: return "forward.fill"
+        case .keyboard: return "keyboard"
         default: return nil
         }
     }

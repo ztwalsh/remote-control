@@ -14,6 +14,8 @@ struct NowPlaying: View {
     @State private var drag: CGFloat = 0
 
     private let stripHeight: CGFloat = 64
+    /// The main screen's side padding (see `RemoteScreen`), used for the strip's sides.
+    private static let edgeInset: CGFloat = 22
     private let artSize: CGFloat = 210
     private let thumbSize: CGFloat = 40
     /// The open player's height above the home indicator.
@@ -76,13 +78,16 @@ struct NowPlaying: View {
                 .accessibilityHidden(open)
             artwork(app, open: open)
         }
-        .frame(height: open ? playerHeight + inset : stripHeight)
+        // Pinned to the top: the player inside is taller than the strip, and centering would clip the strip's contents.
+        .frame(height: open ? playerHeight + inset : stripHeight, alignment: .top)
         .clipShape(shape)
         .contentShape(shape)
         .onTapGesture { if !isExpanded { isExpanded = true } }
         .shadow(color: .black.opacity(open ? 0.25 : 0.3), radius: open ? 20 : 16, y: open ? -6 : 8)
-        .padding(.horizontal, open ? 0 : 12)
-        .padding(.bottom, open ? 0 : max(inset, 12) + 4)
+        // Collapsed, it sits 22 points from the sides, the same inset as the cards, and clear of
+        // the home indicator at the bottom.
+        .padding(.horizontal, open ? 0 : Self.edgeInset)
+        .padding(.bottom, open ? 0 : inset + 12)
         .offset(y: drag)
         .gesture(dragGesture)
         .foregroundStyle(.white)

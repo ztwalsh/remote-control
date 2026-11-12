@@ -17,11 +17,20 @@ public protocol TVControlling: Sendable {
     /// Changes pushed by the TV: volume, sound output and the app on screen.
     func events() async -> AsyncStream<TVEvent>
     var supportsSoundOutput: Bool { get }
+    /// Whether the app can type into the TV's text fields. LG and Samsung can; Vizio can't.
+    var supportsKeyboard: Bool { get }
+    /// Changes the text in the TV's focused field from `old` (what the app last sent) to `new`.
+    func replaceText(_ old: String, with new: String) async throws
+    /// Presses the TV keyboard's Enter or Done key.
+    func submitText() async throws
 }
 
 public extension TVControlling {
     /// Whether the TV lets the app choose where its sound goes. LG does; Samsung doesn't.
     var supportsSoundOutput: Bool { true }
+    var supportsKeyboard: Bool { false }
+    func replaceText(_ old: String, with new: String) async throws { throw TVError.unsupported("keyboard") }
+    func submitText() async throws { throw TVError.unsupported("keyboard") }
 }
 
 /// Who makes a TV, which decides how the app talks to it.

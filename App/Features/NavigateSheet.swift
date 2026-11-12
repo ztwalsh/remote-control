@@ -2,19 +2,32 @@ import SwiftUI
 import TVKit
 
 /// Moves around the TV's screen like an Apple TV remote: swipe to move the highlight, tap to select.
-/// Back and Home sit underneath.
+/// Back and Home sit underneath, with Keyboard for TVs that take typing (LG and Samsung).
+///
+/// When a text field on the TV gets focus (a search box, a login), the TV says so and a typing
+/// field opens here with the phone's keyboard up. What's typed goes to the TV as you type;
+/// Return presses the TV's Enter.
 struct NavigateSheet: View {
     let store: RemoteStore
     let onClose: () -> Void
 
     @State private var presses = 0
     @State private var repair = Repair.idle
+    @State private var isTyping = false
+    /// What's been typed into the TV's field from here, since the field opened.
+    @State private var text = ""
+    @FocusState private var fieldFocused: Bool
 
     enum Repair: Equatable { case idle, pairing, awaitingPrompt, failed }
 
     var body: some View {
         VStack(spacing: 16) {
             SheetHeader(title: "Navigate", onClose: onClose)
+
+            if isTyping {
+                typingField
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
 
             SwipePad { button in
                 store.press(button)
@@ -25,12 +38,76 @@ struct NavigateSheet: View {
             HStack(spacing: 16) {
                 KeyButton(title: "Back", icon: .back) { store.press(.back) }
                 KeyButton(title: "Home", icon: .home) { store.press(.home) }
+                if store.supportsKeyboard {
+                    KeyButton(title: "Keyboard", icon: .keyboard, isOn: isTyping) {
+                        isTyping ? finishTyping() : startTyping()
+                    }
+                }
             }
             .frame(maxWidth: .infinity)
         }
         .sheetPadding()
         .padding(.bottom, 12)
         .sensoryFeedback(.impact(weight: .light), trigger: presses)
+        .animation(Theme.settle, value: isTyping)
+        .onAppear { if store.selected.isKeyboardOpen { startTyping() } }
+        .onChange(of: store.selected.isKeyboardOpen) { _, isOpen in
+            isOpen ? startTyping() : finishTyping()
+        }
+    }
+
+    // MARK: - Typing
+
+    private var typingField: some View {
+        HStack(spacing: 10) {
+            IconView(.keyboard, size: 20)
+                .foregroundStyle(Theme.muted)
+            // Every edit goes to the TV. Setting `text` directly (clearing it) doesn't.
+            TextField("Type on your TV", text: Binding(
+                get: { text },
+                set: { new in
+                    store.replaceText(text, with: new)
+                    text = new
+                }
+            ))
+            .font(.system(size: 17))
+            .foregroundStyle(Theme.text)
+            .tint(Theme.accent)
+            .focused($fieldFocused)
+            .submitLabel(.go)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .onSubmit {
+                store.submitText()
+                finishTyping()
+            }
+            Button(action: finishTyping) {
+                IconView(.close, size: 18)
+                    .frame(width: 32, height: 32)
+                    .background(Theme.raised, in: Circle())
+                    .foregroundStyle(Theme.muted)
+            }
+            .buttonStyle(PressScaleStyle(scale: 0.9))
+            .accessibilityLabel("Stop typing")
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
+        .frame(height: 52)
+        .background(Theme.raised.opacity(0.6), in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.accent, lineWidth: 1.5))
+    }
+
+    private func startTyping() {
+        guard store.supportsKeyboard else { return }
+        if !isTyping { text = "" }
+        isTyping = true
+        fieldFocused = true
+    }
+
+    private func finishTyping() {
+        fieldFocused = false
+        isTyping = false
+        text = ""
     }
 
     // MARK: - Older pairings
@@ -270,18 +347,19 @@ private struct SwipePad: View {
     }
 }
 
-/// Back and Home under the touch surface: round, icon only. `title` is the spoken label.
+/// Back, Home and Keyboard under the touch surface: round, icon only. `title` is the spoken label.
 private struct KeyButton: View {
     let title: String
     let icon: Icon
+    var isOn = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             IconView(icon, size: 24)
                 .frame(width: 60, height: 60)
-                .background(Theme.raised, in: Circle())
-                .foregroundStyle(Theme.text)
+                .background(isOn ? Theme.accent : Theme.raised, in: Circle())
+                .foregroundStyle(isOn ? Theme.onAccent : Theme.text)
         }
         .buttonStyle(PressScaleStyle(scale: 0.92))
         .accessibilityLabel(title)

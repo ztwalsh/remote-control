@@ -71,6 +71,19 @@ public final class WebOSTV: TVControlling {
         return Self.macAddresses(in: info)
     }
 
+    /// Reads the play state from a media update: true when paused, false when playing, nil when
+    /// the TV doesn't say (nothing playing, or a state like "loaded").
+    static func isPaused(in payload: JSONValue) -> Bool? {
+        for item in payload["foregroundAppInfo"]?.arrayValue ?? [] {
+            switch item["playState"]?.stringValue {
+            case "playing": return false
+            case "paused": return true
+            default: continue
+            }
+        }
+        return nil
+    }
+
     static func macAddresses(in info: JSONValue) -> [String] {
         var seen: [String] = []
         for key in ["wifiInfo", "wiredInfo"] {
@@ -87,11 +100,32 @@ public final class WebOSTV: TVControlling {
 
     public func press(_ button: RemoteButton) async throws { try await pointer.press(button) }
 
+    // MARK: - Keyboard
+
+    public var supportsKeyboard: Bool { true }
+
+    /// LG types at the cursor, so this deletes back to where the texts differ and types the rest.
+    public func replaceText(_ old: String, with new: String) async throws {
+        let edit = TextEdit(from: old, to: new)
+        if edit.deleteCount > 0 {
+            _ = try await client.request(SSAPURI.deleteCharacters, payload: ["count": .number(Double(edit.deleteCount))])
+        }
+        if !edit.insert.isEmpty {
+            _ = try await client.request(SSAPURI.insertText, payload: ["text": .string(edit.insert), "replace": .number(0)])
+        }
+    }
+
+    public func submitText() async throws {
+        _ = try await client.request(SSAPURI.sendEnterKey)
+    }
+
     public func events() async -> AsyncStream<TVEvent> {
         let client = self.client
         let volumeUpdates = await client.subscribe(SSAPURI.getVolume)
         let outputUpdates = await client.subscribe(SSAPURI.getSoundOutput)
         let appUpdates = await client.subscribe(SSAPURI.foregroundApp)
+        let keyboardUpdates = await client.subscribe(SSAPURI.remoteKeyboard)
+        let mediaUpdates = await client.subscribe(SSAPURI.mediaState)
 
         return AsyncStream { continuation in
             let tasks = [
@@ -118,6 +152,24 @@ public final class WebOSTV: TVControlling {
                     do {
                         for try await payload in appUpdates {
                             continuation.yield(.foregroundApp(payload["appId"]?.stringValue))
+                        }
+                    } catch {}
+                },
+                Task {
+                    // Older sets and some apps don't report this; play and pause then fall back to a guess.
+                    do {
+                        for try await payload in mediaUpdates {
+                            if let paused = Self.isPaused(in: payload) { continuation.yield(.paused(paused)) }
+                        }
+                    } catch {}
+                },
+                Task {
+                    // Needs the text input permission; TVs paired before it was added refuse it.
+                    do {
+                        for try await payload in keyboardUpdates {
+                            if let focus = payload["currentWidget"]?["focus"]?.boolValue {
+                                continuation.yield(.keyboard(focus))
+                            }
                         }
                     } catch {}
                 },

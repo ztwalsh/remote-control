@@ -329,3 +329,33 @@ final class VizioTests: XCTestCase {
         XCTAssertEqual(description.manufacturer, "VIZIO")
     }
 }
+
+final class TextEditTests: XCTestCase {
+    func testTypingAtTheEnd() {
+        XCTAssertEqual(TextEdit(from: "brea", to: "break"), TextEdit(deleteCount: 0, insert: "k"))
+    }
+
+    func testBackspace() {
+        XCTAssertEqual(TextEdit(from: "break", to: "brea"), TextEdit(deleteCount: 1, insert: ""))
+    }
+
+    func testEditInTheMiddleRetypesTheRest() {
+        XCTAssertEqual(TextEdit(from: "the office", to: "the oficce"), TextEdit(deleteCount: 4, insert: "icce"))
+    }
+
+    func testClearing() {
+        XCTAssertEqual(TextEdit(from: "café", to: ""), TextEdit(deleteCount: 4, insert: ""))
+    }
+}
+
+final class PlayStateTests: XCTestCase {
+    func testReadsLGPlayState() throws {
+        func parse(_ json: String) throws -> Bool? {
+            WebOSTV.isPaused(in: try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)))
+        }
+        XCTAssertEqual(try parse(#"{"foregroundAppInfo":[{"appId":"netflix","playState":"playing"}]}"#), false)
+        XCTAssertEqual(try parse(#"{"foregroundAppInfo":[{"appId":"netflix","playState":"paused"}]}"#), true)
+        XCTAssertNil(try parse(#"{"foregroundAppInfo":[{"appId":"netflix","playState":"loaded"}]}"#))
+        XCTAssertNil(try parse(#"{"foregroundAppInfo":[]}"#))
+    }
+}

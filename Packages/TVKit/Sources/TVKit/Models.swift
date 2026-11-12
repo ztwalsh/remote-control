@@ -109,5 +109,10 @@ public enum TVEvent: Sendable, Equatable {
     case volume(VolumeStatus)
     case soundOutput(SoundOutput)
     case foregroundApp(String?)
+    /// The TV opened (true) or closed (false) its on-screen keyboard for a text field.
+    case keyboard(Bool)
+    /// Whether what's on screen is paused (true) or playing (false). Only LG reports it, and only
+    /// for apps that play through the TV's own media player.
+    case paused(Bool)
     case disconnected
 }

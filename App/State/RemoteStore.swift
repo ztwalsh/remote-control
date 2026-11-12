@@ -14,9 +14,11 @@ struct TVState: Identifiable, Equatable {
     var soundOutput: SoundOutput
     var foregroundAppID: String?
     var sleepEndsAt: Date?
-    /// Whether the app on screen was last told to pause. TVs don't report it, so it's only a guess,
-    /// cleared whenever the app on screen changes.
+    /// Whether what's on screen is paused. LG reports it for most video apps; otherwise it's a guess
+    /// from the last play or pause sent, cleared whenever the app on screen changes.
     var isPaused = false
+    /// Whether the TV's on-screen keyboard is open for a text field (LG and Samsung report it).
+    var isKeyboardOpen = false
 }
 
 /// The app's state and actions. Views read from it; every change goes through a method here,
@@ -345,6 +347,41 @@ final class RemoteStore {
 
     func press(_ button: RemoteButton) {
         pointer { try await $0.press(button) }
+    }
+
+    // MARK: - Keyboard
+
+    /// Whether the selected TV accepts typing from the phone.
+    var supportsKeyboard: Bool {
+        controllers[selectedID]?.supportsKeyboard ?? false
+    }
+
+    /// Typing goes out one change at a time, in order, so fast typing doesn't arrive scrambled.
+    private var typing: Task<Void, Never>?
+
+    /// Changes the text in the TV's focused field from `old` to `new`.
+    func replaceText(_ old: String, with new: String) {
+        guard let controller = controllers[selectedID] else { return }
+        let previous = typing
+        typing = Task {
+            await previous?.value
+            do {
+                try await controller.replaceText(old, with: new)
+                pointerRefused = false
+            } catch TVError.server(let message) where message.localizedCaseInsensitiveContains("permission") {
+                pointerRefused = true
+            } catch {}
+        }
+    }
+
+    /// Presses Enter on the TV's keyboard, after any typing still on its way.
+    func submitText() {
+        guard let controller = controllers[selectedID] else { return }
+        let previous = typing
+        typing = Task {
+            await previous?.value
+            try? await controller.submitText()
+        }
     }
 
     private func pointer(_ action: @escaping @Sendable (any TVControlling) async throws -> Void) {
@@ -682,6 +719,10 @@ final class RemoteStore {
                 if tv.foregroundAppID != appID { tv.isPaused = false }
                 tv.foregroundAppID = appID
             }
+        case .keyboard(let isOpen):
+            update(id) { $0.isKeyboardOpen = isOpen }
+        case .paused(let isPaused):
+            update(id) { $0.isPaused = isPaused }
         case .disconnected:
             // A real TV closes the connection when it turns off. iOS also drops it while the app
             // is in the background; returning to the app reconnects.
@@ -690,6 +731,7 @@ final class RemoteStore {
             update(id) {
                 $0.isOn = false
                 $0.foregroundAppID = nil
+                $0.isKeyboardOpen = false
             }
         }
     }

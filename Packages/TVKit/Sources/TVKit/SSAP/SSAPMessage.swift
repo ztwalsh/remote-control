@@ -34,6 +34,13 @@ public enum SSAPURI {
     public static let connectionInfo = "ssap://com.webos.service.connectionmanager/getinfo"
     /// Returns `socketPath`, a second WebSocket that takes pointer moves, clicks and button presses.
     public static let pointerInputSocket = "ssap://com.webos.service.networkinput/getPointerInputSocket"
+    /// Subscribe: `foregroundAppInfo[].playState` is "playing" or "paused" for media on screen.
+    public static let mediaState = "ssap://com.webos.media/getForegroundAppInfo"
+    /// Subscribe: `currentWidget.focus` is true while a text field on the TV has focus.
+    public static let remoteKeyboard = "ssap://com.webos.service.ime/registerRemoteKeyboard"
+    public static let insertText = "ssap://com.webos.service.ime/insertText"
+    public static let deleteCharacters = "ssap://com.webos.service.ime/deleteCharacters"
+    public static let sendEnterKey = "ssap://com.webos.service.ime/sendEnterKey"
 }
 
 /// The register payload. The TV shows an "Allow this device?" prompt the first time.
@@ -49,6 +56,7 @@ enum SSAPRegistration {
         "CONTROL_INPUT_MEDIA_PLAYBACK",
         "CONTROL_INPUT_JOYSTICK",
         "CONTROL_MOUSE_AND_KEYBOARD",
+        "CONTROL_INPUT_TEXT",
         "CONTROL_POWER",
         "CONTROL_TV_POWER",
         "CONTROL_TIMER_INFO",
