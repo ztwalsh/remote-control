@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Colors, radii and motion from the HTML prototype (prototype/lg-remote.html).
+/// Colors, radii and motion from the HTML prototype (prototype/app.html).
 /// Every color has a light and a dark value and follows the app's appearance. The colors come from
 /// the theme color chosen in Your TVs: Mono (the original black and white) or one color that tints
 /// the accent and, faintly, every surface.

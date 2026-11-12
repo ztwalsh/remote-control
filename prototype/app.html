@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<style>[hidden]{display:none!important}body{margin:0}</style>
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
 <title>LG Remote Prototype</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
@@ -14,12 +14,18 @@
   --stage: #E4E4E8;
   --bezel: #1B1B1E;
   --stage-ring: rgba(0, 0, 0, 0.12);
+  --stage-text: #6E6E73;
+  --stage-strong: #111113;
   --spring: cubic-bezier(.2, .9, .1, 1);
   --pop: cubic-bezier(.34, 1.56, .64, 1);
   --font: -apple-system, "SF Pro Text", system-ui, "Helvetica Neue", Arial, sans-serif;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --stage: #050506; --stage-ring: rgba(255, 255, 255, 0.1); color-scheme: dark; } }
-:root[data-theme="dark"] { --stage: #050506; --stage-ring: rgba(255, 255, 255, 0.1); color-scheme: dark; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --stage: #050506; --stage-ring: rgba(255, 255, 255, 0.1); --stage-text: #8B8B90; --stage-strong: #F2F2F3; color-scheme: dark; } }
+:root[data-theme="dark"] { --stage: #050506; --stage-ring: rgba(255, 255, 255, 0.1); --stage-text: #8B8B90; --stage-strong: #F2F2F3; color-scheme: dark; }
+.back { position: fixed; z-index: 50; top: max(16px, env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); display: inline-flex; align-items: center; gap: 4px; padding: 8px 12px 8px 8px; border-radius: 18px; color: var(--stage-text); font: 500 14px var(--font); text-decoration: none; }
+.back:hover { color: var(--stage-strong); }
+.back svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 500px) { .back { display: none; } }
 html, body { height: 100%; }
 body { background: var(--stage); font-family: var(--font); -webkit-font-smoothing: antialiased; overflow: hidden; margin: 0; }
 button, input { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
@@ -230,6 +236,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
 </head>
 <body>
 
+<a class="back" id="backLink" href="index.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Prototypes</a>
 <div class="stage">
   <div class="fit" id="fit">
     <div class="device" id="device">
@@ -1199,6 +1206,8 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
     }
   }, 1000);
 
+  // Back to the list: return to it if we came from it, else follow the link.
+  $('backLink').addEventListener('click', (e) => { if (document.referrer && history.length > 1) { e.preventDefault(); history.back(); } });
   hydrate(document);
   applyColors();
   renderAll();

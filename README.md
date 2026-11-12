@@ -2,7 +2,7 @@
 
 A native iPhone remote for LG webOS, Samsung Smart TVs and Vizio SmartCast TVs: switch between TVs, turn them on and off, set the volume, pick the sound output, wind up a sleep timer, and open favorite apps.
 
-[`prototype/lg-remote.html`](prototype/lg-remote.html) is a clickable HTML version of the app as it is now: same colors, icons, sheets and motion, with example TVs. Open it in a browser to try the design without a phone. The technical and delivery plan is in [`docs/PLAN.md`](docs/PLAN.md).
+[`prototype/`](prototype/) holds clickable HTML versions of the app: `app.html` matches the app as it is now (same colors, icons, sheets and motion, with example TVs), and `ideas/` has design ideas to try before building them. Open `prototype/index.html` in a browser. The technical and delivery plan is in [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Status
 
@@ -54,7 +54,7 @@ App/
   DesignSystem/            theme, the bulging capsule, the ring, picker rows
   Assets.xcassets          app icon, accent color, app logos
 Packages/TVKit/            talking to the TV: SSAP client, pairing store, discovery, Wake-on-LAN, MockTV
-prototype/                 clickable HTML version of the app
+prototype/                 clickable HTML prototypes: the app as built, plus ideas
 docs/PLAN.md               technical plan and phases
 project.yml                XcodeGen spec
 ```
