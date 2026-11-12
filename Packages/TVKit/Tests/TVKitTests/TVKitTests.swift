@@ -149,6 +149,7 @@ final class WakeAddressTests: XCTestCase {
 
     func testButtonMessage() {
         XCTAssertEqual(PointerInput.button(.up), "type:button\nname:UP\n\n")
+        XCTAssertEqual(PointerInput.button(.fastForward), "type:button\nname:FASTFORWARD\n\n")
     }
 }
 
@@ -251,6 +252,10 @@ final class SamsungTests: XCTestCase {
         XCTAssertEqual(SamsungTV.key(for: .enter), "KEY_ENTER")
         XCTAssertEqual(SamsungTV.key(for: .back), "KEY_RETURN")
         XCTAssertEqual(SamsungTV.key(for: .home), "KEY_HOME")
+        XCTAssertEqual(SamsungTV.key(for: .play), "KEY_PLAY")
+        XCTAssertEqual(SamsungTV.key(for: .pause), "KEY_PAUSE")
+        XCTAssertEqual(SamsungTV.key(for: .rewind), "KEY_REWIND")
+        XCTAssertEqual(SamsungTV.key(for: .fastForward), "KEY_FF")
     }
 
     func testRenderingControlEnvelopeAndReply() {
@@ -282,6 +287,10 @@ final class VizioTests: XCTestCase {
         XCTAssertEqual(VizioTV.key(for: .enter), VizioKey(codeset: 3, code: 2))
         XCTAssertEqual(VizioTV.key(for: .up), VizioKey(codeset: 3, code: 8))
         XCTAssertEqual(VizioTV.key(for: .home), VizioKey(codeset: 4, code: 15))
+        XCTAssertEqual(VizioTV.key(for: .play), VizioKey(codeset: 2, code: 3))
+        XCTAssertEqual(VizioTV.key(for: .pause), VizioKey(codeset: 2, code: 2))
+        XCTAssertEqual(VizioTV.key(for: .rewind), VizioKey(codeset: 2, code: 1))
+        XCTAssertEqual(VizioTV.key(for: .fastForward), VizioKey(codeset: 2, code: 0))
     }
 
     func testInputsAndAppsHaveDistinctIDs() {

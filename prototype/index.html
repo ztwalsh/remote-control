@@ -47,6 +47,7 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--muted); }
 .chip.live { background: var(--accent); color: var(--on-accent); }
 code { font-family: var(--mono); font-size: 11.5px; }
 .open { font-weight: 500; color: var(--muted); }
+.empty { margin: 0; padding: 18px 20px; border-radius: 26px; border: 1.5px dashed var(--line); font-size: 14px; line-height: 1.45; color: var(--muted); }
 
 /* Previews: a slice of each screen at small scale. */
 .pv { position: relative; width: 116px; height: 132px; border-radius: 18px; background: var(--bg); overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 12px 10px; box-sizing: border-box; }
@@ -89,31 +90,19 @@ code { font-family: var(--mono); font-size: 11.5px; }
         <span class="pv-head"><span class="pv-title"></span><span class="pv-power"></span></span>
         <span class="pv-card"><span class="pv-bar"></span></span>
         <span class="pv-row"><span class="pv-tile"></span><span class="pv-tile"></span></span>
-        <span class="pv-card"><span class="pv-apps"><i></i><i></i><i></i><i></i></span></span>
+        <span class="pv-strip"><b><svg viewBox="0 0 24 24"><path fill="#E50914" d="M5.398 0v.006c3.028 8.556 5.37 15.175 8.348 23.596 2.344.058 4.85.398 4.854.398-2.8-7.924-5.923-16.747-8.487-24zm8.489 0v9.63L18.6 22.951c-.043-7.86-.004-15.913.002-22.95zM5.398 1.05V24c1.873-.225 2.81-.312 4.715-.398v-9.22z"/></svg></b><span></span><em></em></span>
       </span>
       <span class="text">
         <span class="name">Remote</span>
-        <p class="desc">Your TVs, volume, sound out, sleep timer, navigate, favorites and all apps, with Mono or a theme color in light or dark.</p>
-        <span class="meta"><span class="chip live">Matches the app</span><span>as of <code>3cc40b8</code></span><span class="open">Open</span></span>
+        <p class="desc">Your TVs, volume, sound out, sleep timer, navigate, favorites, all apps and the now-playing strip, with Mono or a theme color in light or dark.</p>
+        <span class="meta"><span class="chip live">Matches the app</span><span>Updated Nov 12</span><span class="open">Open</span></span>
       </span>
     </a>
   </section>
 
   <section aria-labelledby="ideasHead">
     <h2 id="ideasHead">Ideas</h2>
-    <a class="card" href="ideas/now-playing.html">
-      <span class="pv" aria-hidden="true">
-        <span class="pv-head"><span class="pv-title"></span><span class="pv-power"></span></span>
-        <span class="pv-card"><span class="pv-bar"></span></span>
-        <span class="pv-row"><span class="pv-tile"></span><span class="pv-tile"></span></span>
-        <span class="pv-strip"><b><svg viewBox="0 0 24 24"><path fill="#E50914" d="M5.398 0v.006c3.028 8.556 5.37 15.175 8.348 23.596 2.344.058 4.85.398 4.854.398-2.8-7.924-5.923-16.747-8.487-24zm8.489 0v9.63L18.6 22.951c-.043-7.86-.004-15.913.002-22.95zM5.398 1.05V24c1.873-.225 2.81-.312 4.715-.398v-9.22z"/></svg></b><span></span><em></em></span>
-      </span>
-      <span class="text">
-        <span class="name">Now playing strip</span>
-        <p class="desc">What's on moves from under the TV name to a strip at the bottom. Tap or swipe up to open it for play, pause, rewind and fast forward.</p>
-        <span class="meta"><span class="chip">Idea</span><span>Nov 12</span><span class="open">Open</span></span>
-      </span>
-    </a>
+    <p class="empty">Nothing in progress. The now-playing strip was the last idea; it's in the app now.</p>
   </section>
 </main>
 </body>

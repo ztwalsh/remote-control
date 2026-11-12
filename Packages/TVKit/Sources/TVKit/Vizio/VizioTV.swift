@@ -118,6 +118,10 @@ public final class VizioTV: TVControlling {
         case .enter: return .ok
         case .back: return .back
         case .home: return .home
+        case .play: return .play
+        case .pause: return .pause
+        case .rewind: return .seekBack
+        case .fastForward: return .seekForward
         }
     }
 

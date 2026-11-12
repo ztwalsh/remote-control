@@ -188,6 +188,10 @@ public final class SamsungTV: TVControlling {
         case .enter: return "KEY_ENTER"
         case .back: return "KEY_RETURN"
         case .home: return "KEY_HOME"
+        case .play: return "KEY_PLAY"
+        case .pause: return "KEY_PAUSE"
+        case .rewind: return "KEY_REWIND"
+        case .fastForward: return "KEY_FF"
         }
     }
 

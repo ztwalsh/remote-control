@@ -5,6 +5,7 @@ struct RemoteScreen: View {
     let store: RemoteStore
 
     @State private var sheet: Sheet?
+    @State private var nowPlayingOpen = false
 
     /// Which sheet is up. Editing carries the TV's ID with it: kept in separate state, the sheet
     /// was built before that state arrived, found no TV and came up blank.
@@ -26,7 +27,8 @@ struct RemoteScreen: View {
             if tv.isOn {
                 ScrollView {
                     tools(tv)
-                        .padding(.bottom, 24)
+                        // Room for the now-playing strip over the bottom of the list.
+                        .padding(.bottom, store.nowPlaying == nil ? 24 : 96)
                 }
                 .scrollIndicators(.hidden)
                 .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
@@ -35,12 +37,16 @@ struct RemoteScreen: View {
         .padding(.horizontal, 22)
         .padding(.top, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .accessibilityHidden(nowPlayingOpen)
         // Over the whole screen, so the power button is centered on it, not on the space below the header.
         .overlay {
             if !tv.isOn {
                 OffView(tvName: tv.name, onTurnOn: { store.setPower(true, for: tv.id) })
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
+        }
+        .overlay {
+            NowPlaying(store: store, isExpanded: $nowPlayingOpen)
         }
         .background(Theme.background.ignoresSafeArea())
         .animation(Theme.settle, value: tv.isOn)
@@ -67,10 +73,13 @@ struct RemoteScreen: View {
                             .foregroundStyle(Theme.muted)
                     }
                     .foregroundStyle(Theme.text)
-                    Text(store.status(for: tv))
-                        .font(.system(size: 15))
-                        .foregroundStyle(Theme.muted)
-                        .contentTransition(.opacity)
+                    // What's on screen is in the now-playing strip; this line is only for off and sleep.
+                    if let line = store.headerStatus(for: tv) {
+                        Text(line)
+                            .font(.system(size: 15))
+                            .foregroundStyle(Theme.muted)
+                            .contentTransition(.opacity)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())

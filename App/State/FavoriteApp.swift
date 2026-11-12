@@ -23,6 +23,11 @@ struct PinnedApp: Codable, Hashable, Identifiable {
     var bundled: FavoriteApp? {
         FavoriteApp.defaults.first { $0.id == id } ?? FavoriteApp.defaults.first { $0.name.caseInsensitiveCompare(title) == .orderedSame }
     }
+
+    /// The now-playing strip's color: the app's brand, or a neutral dark grey for others.
+    var playerColor: Color {
+        bundled?.player ?? Color(hex: 0x2C2C30)
+    }
 }
 
 /// Each TV's pinned apps, in grid order, kept in UserDefaults by TV id.
@@ -51,24 +56,34 @@ struct FavoriteApp: Identifiable, Hashable {
     let tile: Color
     let glyph: Color
     let logoSize: CGFloat
+    /// The now-playing strip's background: a dark shade of the app's brand color.
+    let player: Color
 
     static let defaults: [FavoriteApp] = [
         FavoriteApp(id: "netflix", name: "Netflix", logo: "logo-netflix",
-                    tile: .black, glyph: Color(hex: 0xE50914), logoSize: 30),
+                    tile: .black, glyph: Color(hex: 0xE50914), logoSize: 30,
+                    player: Color(hex: 0x600408)),
         FavoriteApp(id: "youtube.leanback.v4", name: "YouTube", logo: "logo-youtube",
-                    tile: .white, glyph: Color(hex: 0xFF0000), logoSize: 36),
+                    tile: .white, glyph: Color(hex: 0xFF0000), logoSize: 36,
+                    player: Color(hex: 0x6B0000)),
         FavoriteApp(id: "amazon", name: "Prime Video", logo: "logo-primevideo",
-                    tile: Color(hex: 0x00A8E1), glyph: .white, logoSize: 44),
+                    tile: Color(hex: 0x00A8E1), glyph: .white, logoSize: 44,
+                    player: Color(hex: 0x00475F)),
         FavoriteApp(id: "com.hbo.hbomax", name: "HBO Max", logo: "logo-hbo",
-                    tile: .black, glyph: .white, logoSize: 46),
+                    tile: .black, glyph: .white, logoSize: 46,
+                    player: Color(hex: 0x2E1466)),
         FavoriteApp(id: "com.apple.appletv", name: "Apple TV", logo: "logo-appletv",
-                    tile: .black, glyph: .white, logoSize: 38),
+                    tile: .black, glyph: .white, logoSize: 38,
+                    player: Color(hex: 0x1F1F22)),
         FavoriteApp(id: "spotify-beehive", name: "Spotify", logo: "logo-spotify",
-                    tile: .black, glyph: Color(hex: 0x1ED760), logoSize: 36),
+                    tile: .black, glyph: Color(hex: 0x1ED760), logoSize: 36,
+                    player: Color(hex: 0x0D5A28)),
         FavoriteApp(id: "com.cbs-ent.paramountplus", name: "Paramount+", logo: "logo-paramountplus",
-                    tile: Color(hex: 0x0064FF), glyph: .white, logoSize: 38),
+                    tile: Color(hex: 0x0064FF), glyph: .white, logoSize: 38,
+                    player: Color(hex: 0x002A6B)),
         FavoriteApp(id: "com.webos.app.lgchannels", name: "LG Channels", logo: "logo-lg",
-                    tile: Color(hex: 0xA50034), glyph: .white, logoSize: 34),
+                    tile: Color(hex: 0xA50034), glyph: .white, logoSize: 34,
+                    player: Color(hex: 0x450016)),
     ]
 
     var pinned: PinnedApp { PinnedApp(id: id, title: name, iconURL: nil) }

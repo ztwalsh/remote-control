@@ -3,16 +3,28 @@ import SwiftUI
 /// The app's icons, from Central Icons (round, 2px radius, 2px stroke), stored as vector PDFs
 /// in Assets.xcassets/Icons and drawn as templates so they take the surrounding color.
 ///
-/// Central has no power icon, so `power` stays an SF Symbol.
+/// Central has no power or media icons, so those are SF Symbols (`systemName`).
 enum Icon: String {
     case tv, edit, back, close, pin, pinFill = "pin-fill", unpin, search, check, trash, plus, minus, moon, home
     case sun, system, speaker, receiver, headphones, volume, volumeOff = "volume-off", touch, refresh
     case chevronDown = "chevron-down", arrowUp = "arrow-up", arrowDown = "arrow-down"
     case arrowLeft = "arrow-left", arrowRight = "arrow-right"
-    case power
+    case power, play, pause, rewind, fastForward = "fast-forward"
 
     /// The asset name, for places that need one (menus, labels).
     var assetName: String { "icon-\(rawValue)" }
+
+    /// The SF Symbol drawn for icons Central doesn't have.
+    var systemName: String? {
+        switch self {
+        case .power: return "power"
+        case .play: return "play.fill"
+        case .pause: return "pause.fill"
+        case .rewind: return "backward.fill"
+        case .fastForward: return "forward.fill"
+        default: return nil
+        }
+    }
 }
 
 /// Draws an icon at a fixed size. The size is the icon's full 24-point grid, so 22 here matches
@@ -27,8 +39,8 @@ struct IconView: View {
     }
 
     var body: some View {
-        if icon == .power {
-            Image(systemName: "power")
+        if let symbol = icon.systemName {
+            Image(systemName: symbol)
                 .font(.system(size: size * 0.78, weight: .semibold))
                 .frame(width: size, height: size)
         } else {

@@ -14,6 +14,9 @@ struct TVState: Identifiable, Equatable {
     var soundOutput: SoundOutput
     var foregroundAppID: String?
     var sleepEndsAt: Date?
+    /// Whether the app on screen was last told to pause. TVs don't report it, so it's only a guess,
+    /// cleared whenever the app on screen changes.
+    var isPaused = false
 }
 
 /// The app's state and actions. Views read from it; every change goes through a method here,
@@ -198,7 +201,10 @@ final class RemoteStore {
 
     func launch(appID: String) {
         let id = selectedID
-        update(id) { $0.foregroundAppID = appID }
+        update(id) {
+            $0.foregroundAppID = appID
+            $0.isPaused = false
+        }
         let controller = controllers[id]
         Task { try? await controller?.launch(appID: appID) }
     }
@@ -308,6 +314,29 @@ final class RemoteStore {
         PinnedApps.save(pins.filter { key, _ in clients[key] != nil })
     }
 
+    // MARK: - Now playing
+
+    /// The app on the selected TV's screen, for the now-playing strip. Nil while the TV is off or
+    /// shows something without a name in its app list, such as its home screen or settings.
+    var nowPlaying: PinnedApp? {
+        let tv = selected
+        guard tv.isOn, let appID = tv.foregroundAppID, let title = appName(for: appID) else { return nil }
+        let iconURL = installedApps[selectedID]?.first { $0.id == appID }?.iconURL
+            ?? pins[selectedID]?.first { $0.id == appID }?.iconURL
+        return PinnedApp(id: appID, title: title, iconURL: iconURL)
+    }
+
+    /// Plays or pauses the app on screen. TVs don't say which it's doing, so this goes by the last press.
+    func togglePlayback() {
+        let pausing = !selected.isPaused
+        update(selectedID) { $0.isPaused = pausing }
+        press(pausing ? .pause : .play)
+    }
+
+    func skip(forward: Bool) {
+        press(forward ? .fastForward : .rewind)
+    }
+
     // MARK: - Navigate
 
     /// Set when the TV refuses remote navigation, which happens for TVs paired before it
@@ -405,15 +434,23 @@ final class RemoteStore {
 
     // MARK: - Status
 
+    /// A TV's state in a few words, for its row in Your TVs.
     func status(for tv: TVState) -> String {
+        if let line = headerStatus(for: tv) { return line }
+        if let app = appName(for: tv.foregroundAppID) { return "Watching \(app)" }
+        return "On"
+    }
+
+    /// The line under the TV's name on the main screen. What's on screen is in the now-playing
+    /// strip, so this only speaks up while connecting, off or sleeping.
+    func headerStatus(for tv: TVState) -> String? {
         if connecting.contains(tv.id) && !tv.isOn { return "Connecting…" }
         if !tv.isOn { return "Off" }
         if let endsAt = tv.sleepEndsAt {
             let minutes = max(1, Int((endsAt.timeIntervalSinceNow / 60).rounded(.up)))
             return "Sleeping in \(Self.duration(minutes: minutes))"
         }
-        if let app = appName(for: tv.foregroundAppID) { return "Watching \(app)" }
-        return "On"
+        return nil
     }
 
     nonisolated static func duration(minutes: Int) -> String {
@@ -597,7 +634,10 @@ final class RemoteStore {
             rememberOutput(output, for: id)
         }
         if let appID = try? await controller.foregroundAppID() {
-            update(id) { $0.foregroundAppID = appID }
+            update(id) { tv in
+                if tv.foregroundAppID != appID { tv.isPaused = false }
+                tv.foregroundAppID = appID
+            }
         }
     }
 
@@ -638,11 +678,19 @@ final class RemoteStore {
             update(id) { $0.soundOutput = output }
             if !isDemo { rememberOutput(output, for: id) }
         case .foregroundApp(let appID):
-            update(id) { $0.foregroundAppID = appID }
+            update(id) { tv in
+                if tv.foregroundAppID != appID { tv.isPaused = false }
+                tv.foregroundAppID = appID
+            }
         case .disconnected:
             // A real TV closes the connection when it turns off. iOS also drops it while the app
             // is in the background; returning to the app reconnects.
-            update(id) { $0.isOn = false }
+            // Forget the app on screen too: a TV that can't report it (Samsung) would otherwise show
+            // a stale one in the now-playing strip once it reconnects.
+            update(id) {
+                $0.isOn = false
+                $0.foregroundAppID = nil
+            }
         }
     }
 

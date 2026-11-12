@@ -4,9 +4,12 @@ import Foundation
 public enum RemoteButton: String, Sendable, CaseIterable {
     case up = "UP", down = "DOWN", left = "LEFT", right = "RIGHT"
     case enter = "ENTER", back = "BACK", home = "HOME"
+    /// Media keys, for the app on screen. How far rewind and fast forward go is up to the app:
+    /// some skip 10 seconds, others change the playback speed.
+    case play = "PLAY", pause = "PAUSE", rewind = "REWIND", fastForward = "FASTFORWARD"
 }
 
-/// The TV's pointer socket, which also takes remote button presses (arrows, OK, Back, Home).
+/// The TV's pointer socket, which also takes remote button presses (arrows, OK, Back, Home, media keys).
 ///
 /// Opened on first use from the address `getPointerInputSocket` returns, and reopened after it drops
 /// (the TV closes it when the main connection goes). Messages are plain text, `key:value` lines

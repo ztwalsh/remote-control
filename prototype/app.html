@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
-<title>LG Remote Prototype</title>
+<title>Remote Prototype</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one iPhone-sized app, matching the native app screen for screen. On a desktop it sits in a
@@ -221,6 +221,51 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
 .fade-in { animation: fadein 260ms ease both; }
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
 
+
+/* ---------- Now-playing strip ---------- */
+.tv-status:empty { display: none; }
+.scroll { padding-bottom: 112px; }
+.ic.fill { fill: currentColor; stroke: none; }
+.player { position: absolute; z-index: 15; left: 12px; right: 12px; bottom: 26px; height: 64px; border-radius: 20px; background: var(--brand, #2C2C30); color: #fff; overflow: hidden; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3); transition: left 520ms var(--spring), right 520ms var(--spring), bottom 520ms var(--spring), height 520ms var(--spring), border-radius 520ms var(--spring), background-color 420ms ease, box-shadow 420ms ease, transform 460ms var(--spring), opacity 260ms ease; touch-action: none; -webkit-user-select: none; user-select: none; }
+.player::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(0, 0, 0, 0.22)); pointer-events: none; }
+.player.hidden { transform: translateY(150%); opacity: 0; pointer-events: none; }
+.player.full { z-index: 25; left: 0; right: 0; bottom: 0; height: 548px; border-radius: 30px 30px 0 0; box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.25); }
+.player.dragging { transition: none; }
+.p-art { position: absolute; left: 0; top: 0; width: 210px; height: 210px; transform-origin: 0 0; transform: translate(12px, 12px) scale(0.1905); transition: transform 520ms var(--spring), box-shadow 420ms ease; border-radius: 55px; cursor: pointer; }
+.p-art .appicon { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.player.full .p-art { transform: translate(var(--fx, 90px), 86px) scale(1); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4); cursor: default; }
+.p-mini { position: absolute; left: 0; right: 0; top: 0; height: 64px; display: flex; align-items: center; gap: 2px; padding: 0 8px 0 64px; transition: opacity 200ms ease; }
+.player.full .p-mini { opacity: 0; pointer-events: none; }
+.p-open { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 3px; background: none; border: 0; padding: 0; color: inherit; text-align: left; cursor: pointer; }
+.p-title { display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-sub { display: flex; align-items: center; gap: 6px; font-size: 13px; color: rgba(255, 255, 255, 0.68); white-space: nowrap; }
+.p-btn { width: 44px; height: 44px; border-radius: 22px; border: 0; background: none; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; transition: transform 320ms var(--pop), background-color 200ms ease; }
+.p-btn:active { transform: scale(0.88); }
+.p-btn:focus-visible, .p-open:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 11px; flex: none; }
+.eq i { display: block; width: 3px; height: 4px; border-radius: 1.5px; background: currentColor; transition: height 300ms ease; }
+.player.playing .eq i { animation: eq 820ms ease-in-out infinite alternate; }
+.player.playing .eq i:nth-child(2) { animation-delay: -270ms; animation-duration: 640ms; }
+.player.playing .eq i:nth-child(3) { animation-delay: -540ms; animation-duration: 940ms; }
+@keyframes eq { from { height: 3px; } to { height: 11px; } }
+.p-full { position: absolute; left: 0; right: 0; top: 0; height: 548px; opacity: 0; pointer-events: none; transition: opacity 180ms ease; }
+.player.full .p-full { opacity: 1; pointer-events: auto; transition: opacity 320ms ease 120ms; }
+.p-grab { position: absolute; top: 6px; left: 50%; width: 36px; height: 5px; margin-left: -18px; border-radius: 3px; background: rgba(255, 255, 255, 0.3); }
+.p-collapse { position: absolute; left: 22px; top: 24px; width: 38px; height: 38px; background: rgba(255, 255, 255, 0.14); }
+.p-meta { position: absolute; left: 28px; right: 28px; top: 320px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.p-meta .p-title { font-size: 24px; max-width: 100%; }
+.p-meta .p-sub { font-size: 15px; }
+.p-transport { position: absolute; left: 0; right: 0; top: 398px; display: flex; align-items: center; justify-content: center; gap: 30px; }
+.p-skip { width: 62px; height: 62px; border-radius: 31px; }
+.p-skip:active { background: rgba(255, 255, 255, 0.14); }
+.p-main { width: 78px; height: 78px; border-radius: 39px; background: #fff; color: var(--brand, #2C2C30); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25); }
+.p-skip.nudge-back .ic { animation: nudgeBack 360ms var(--spring); }
+.p-skip.nudge-fwd .ic { animation: nudgeFwd 360ms var(--spring); }
+@keyframes nudgeBack { 40% { transform: translateX(-6px); } }
+@keyframes nudgeFwd { 40% { transform: translateX(6px); } }
+.pscrim { position: absolute; inset: 0; z-index: 24; background: rgba(0, 0, 0, 0.42); opacity: 0; pointer-events: none; transition: opacity 320ms ease; border: 0; width: 100%; padding: 0; cursor: pointer; }
+.pscrim.open { opacity: 1; pointer-events: auto; }
+
 @media (max-width: 500px) {
   .stage { padding: 0; }
   .fit { width: 100%; height: 100%; }
@@ -228,6 +273,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
   .device { width: 100%; height: 100%; border: 0; border-radius: 0; transform: none; }
   .app { padding: 20px max(22px, env(safe-area-inset-right, 0px)) 0 max(22px, env(safe-area-inset-left, 0px)); }
   .sheet-body { padding-bottom: max(24px, env(safe-area-inset-bottom, 0px)); }
+  .player:not(.full) { bottom: max(26px, calc(env(safe-area-inset-bottom, 0px) + 10px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
@@ -284,6 +330,24 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
         <div class="offview"><button class="wake" id="wakeBtn"><span data-icon="power" data-size="60"></span></button></div>
       </div>
 
+      <button class="pscrim" id="pScrim" aria-label="Collapse now playing" tabindex="-1"></button>
+      <div class="player hidden" id="player" role="region" aria-label="Now playing">
+        <div class="p-art" id="pArt" aria-hidden="true"></div>
+        <div class="p-mini">
+          <button class="p-open" id="pOpen" aria-label="Show now playing"><span class="p-title" id="pMiniTitle"></span><span class="p-sub"><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="pMiniSub"></span></span></button>
+          <button class="p-btn" id="pMiniPlay"></button>
+        </div>
+        <div class="p-full" id="pFull">
+          <div class="p-grab" aria-hidden="true"></div>
+          <button class="p-btn p-collapse" id="pCollapse" aria-label="Collapse"><span data-icon="chevron-down" data-size="22"></span></button>
+          <div class="p-meta"><span class="p-title" id="pTitle"></span><span class="p-sub"><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="pSub"></span></span></div>
+          <div class="p-transport">
+            <button class="p-btn p-skip" id="pBack" aria-label="Rewind"><span data-icon="rewind" data-size="30"></span></button>
+            <button class="p-btn p-main" id="pPlay"></button>
+            <button class="p-btn p-skip" id="pFwd" aria-label="Fast forward"><span data-icon="forward" data-size="30"></span></button>
+          </div>
+        </div>
+      </div>
       <button class="scrim" id="scrim" aria-label="Close" tabindex="-1"></button>
       <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
         <div class="grabber" aria-hidden="true"></div>
@@ -305,7 +369,16 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
   // ---------- Icons: the app's own Central Icons, converted from its PDFs ----------
   const ICONS = {"arrow-down":"<path d=\"M 20.000 9 L 13.416 15.583 C 12.635 16.364 11.364 16.364 10.583 15.583 L 4 9\"/>","arrow-left":"<path d=\"M 15.000 20.000 L 8.416 13.416 C 7.635 12.635 7.635 11.364 8.416 10.583 L 15.000 4\"/>","arrow-right":"<path d=\"M 9 4 L 15.583 10.583 C 16.364 11.364 16.364 12.635 15.583 13.416 L 9 20.000\"/>","arrow-up":"<path d=\"M 4 15.000 L 10.583 8.416 C 11.364 7.635 12.635 7.635 13.416 8.416 L 20.000 15.000\"/>","back":"<path d=\"M 6.5 5 L 3.208 8.291 C 2.817 8.682 2.817 9.317 3.208 9.708 L 6.5 13.000\"/><path d=\"M 4 9 L 17.000 9 C 19.208 9 21.000 10.791 21.000 13.000 L 21.000 14.000 C 21.000 16.208 19.208 18.000 17.000 18.000 L 12.000 18.000\"/>","check":"<path d=\"M 8 13.000 L 11 16.000 L 16.000 8\"/>","chevron-down":"<path d=\"M 6 9.5 L 12.000 15.500 L 18.000 9.5\"/>","close":"<path d=\"M 6.5 6.5 L 17.500 17.500 M 17.500 6.5 L 6.5 17.500\"/>","edit":"<path d=\"M 18.416 3.916 L 20.083 5.583 C 20.864 6.364 20.864 7.635 20.083 8.416 L 7.791 20.708 C 7.604 20.895 7.348 21.000 7.083 21.000 L 3 21.000 L 3 16.916 C 3 16.651 3.104 16.395 3.291 16.208 L 15.583 3.916 C 16.364 3.135 17.635 3.135 18.416 3.916 Z M 18.416 3.916\"/><path d=\"M 13.500 6 L 18.000 10.5\"/>","headphones":"<path d=\"M 4 14.000 L 4 12.000 C 4 7.583 7.583 4 12.000 4 C 16.416 4 20.000 7.583 20.000 12.000 L 20.000 14.000 M 4 14.000 L 4 18.000 C 4 19.104 4.895 20.000 6 20.000 C 7.104 20.000 8 19.104 8 18.000 L 8 16.000 C 8 14.895 7.104 14.000 6 14.000 Z M 20.000 14.000 L 20.000 18.000 C 20.000 19.104 19.104 20.000 18.000 20.000 C 16.895 20.000 16.000 19.104 16.000 18.000 L 16.000 16.000 C 16.000 14.895 16.895 14.000 18.000 14.000 Z M 20.000 14.000\"/>","home":"<path d=\"M 4 9.770 C 4 9.213 4 8.932 4.072 8.677 C 4.135 8.447 4.234 8.229 4.375 8.036 C 4.531 7.817 4.75 7.640 5.182 7.291 L 9.984 3.390 C 10.703 2.807 11.062 2.510 11.458 2.401 C 11.812 2.302 12.187 2.302 12.541 2.401 C 12.937 2.510 13.296 2.807 14.015 3.390 L 18.817 7.291 C 19.250 7.640 19.468 7.817 19.625 8.036 C 19.765 8.229 19.864 8.447 19.927 8.677 C 20.000 8.932 20.000 9.213 20.000 9.770 L 20.000 16.802 C 20.000 17.921 20.000 18.479 19.781 18.906 C 19.588 19.286 19.286 19.588 18.906 19.781 C 18.479 20.000 17.921 20.000 16.802 20.000 L 7.197 20.000 C 6.078 20.000 5.520 20.000 5.093 19.781 C 4.713 19.588 4.411 19.286 4.218 18.906 C 4 18.479 4 17.921 4 16.802 Z M 4 9.770\"/>","minus":"<path d=\"M 5.5 12.000 L 18.500 12.000\"/>","moon":"<path d=\"M 20.963 12.765 C 19.838 13.546 18.468 14.000 16.994 14.000 C 13.130 14.000 9.994 10.864 9.994 7 C 9.994 5.526 10.453 4.161 11.229 3.031 C 6.619 3.421 3 7.286 3 12.000 C 3 16.968 7.026 20.994 12.000 20.994 C 16.708 20.994 20.572 17.375 20.963 12.765 Z M 20.963 12.765\"/>","pin-fill":"<g transform=\"scale(1.33333)\"><path d=\"M 8.121 15.183 L 6 13.062 L 3.531 15.531 C 3.238 15.824 2.761 15.824 2.468 15.531 C 2.175 15.238 2.175 14.761 2.468 14.468 L 4.937 12 L 2.816 9.878 C 1.589 8.648 2.156 6.550 3.835 6.109 L 7.777 5.074 C 7.988 5.019 8.160 4.875 8.257 4.683 L 9.273 2.652 C 9.960 1.277 11.789 0.980 12.875 2.066 L 15.933 5.125 C 17.019 6.210 16.722 8.039 15.347 8.726 L 13.316 9.742 C 13.125 9.839 12.984 10.015 12.925 10.222 L 11.890 14.164 C 11.449 15.843 9.351 16.410 8.121 15.183 Z M 8.121 15.183\" fill=\"currentColor\" stroke=\"none\"/></g>","pin":"<path d=\"M 4 20.000 L 8 16.000 M 4.463 12.463 L 11.536 19.536 C 12.630 20.630 14.494 20.125 14.885 18.630 L 16.270 13.375 C 16.416 12.817 16.796 12.354 17.307 12.093 L 20.015 10.739 C 21.239 10.130 21.505 8.505 20.536 7.536 L 16.463 3.463 C 15.494 2.494 13.869 2.760 13.260 3.984 L 11.906 6.692 C 11.645 7.203 11.182 7.583 10.625 7.729 L 5.369 9.114 C 3.875 9.505 3.369 11.369 4.463 12.463 Z M 4.463 12.463\"/>","plus":"<path d=\"M 12.000 5.5 L 12.000 12.000 M 12.000 12.000 L 12.000 18.500 M 12.000 12.000 L 5.5 12.000 M 12.000 12.000 L 18.500 12.000\"/>","receiver":"<path d=\"M 4 7 L 19.000 7 C 20.104 7 21.000 7.895 21.000 9 L 21.000 18.000 C 21.000 19.104 20.104 20.000 19.000 20.000 L 5 20.000 C 3.895 20.000 3 19.104 3 18.000 L 3 8.385 C 3 7.552 3.515 6.807 4.296 6.515 L 15.000 2.5\"/><path d=\"M 3 12.000 L 21.000 12.000\"/><path d=\"M 9 7.5 L 9 11.5\"/><path d=\"M 17.000 15.125 C 17.484 15.125 17.875 15.515 17.875 16.000 C 17.875 16.484 17.484 16.875 17.000 16.875 C 16.515 16.875 16.125 16.484 16.125 16.000 C 16.125 15.515 16.515 15.125 17.000 15.125 Z M 17.000 15.125\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M 13.000 15.125 C 13.484 15.125 13.875 15.515 13.875 16.000 C 13.875 16.484 13.484 16.875 13.000 16.875 C 12.515 16.875 12.125 16.484 12.125 16.000 C 12.125 15.515 12.515 15.125 13.000 15.125 Z M 13.000 15.125\" fill=\"currentColor\" stroke=\"none\"/>","refresh":"<path d=\"M 19.515 14.666 C 18.416 17.776 15.453 20.000 11.973 20.000 C 7.552 20.000 3.973 16.416 3.973 12.000 C 3.973 7.583 7.552 4 11.973 4 C 15.067 4 17.000 5.5 19.000 8\"/><path d=\"M 19.000 4 L 19.000 8 L 15.000 8\"/>","search":"<path d=\"M 11 18.000 C 14.864 18.000 18.000 14.864 18.000 11 C 18.000 7.135 14.864 4 11 4 C 7.135 4 4 7.135 4 11 C 4 14.864 7.135 18.000 11 18.000 Z M 11 18.000\"/><path d=\"M 20.000 20.000 L 16.052 16.052\"/>","speaker":"<path d=\"M 5 5 C 5 3.895 5.895 3 7 3 L 17.000 3 C 18.104 3 19.000 3.895 19.000 5 L 19.000 19.000 C 19.000 20.104 18.104 21.000 17.000 21.000 L 7 21.000 C 5.895 21.000 5 20.104 5 19.000 Z M 5 5\"/><path d=\"M 15.000 14.000 C 15.000 15.656 13.656 17.000 12.000 17.000 C 10.343 17.000 9 15.656 9 14.000 C 9 12.343 10.343 11 12.000 11 C 13.656 11 15.000 12.343 15.000 14.000 Z M 15.000 14.000\"/><path d=\"M 10 7 L 14.000 7\"/>","sun":"<path d=\"M 12.000 3 L 12.000 2 M 12.000 22.000 L 12.000 21.000 M 18.359 5.640 L 19.067 4.932 M 4.932 19.067 L 5.640 18.359 M 21.000 12.000 L 22.000 12.000 M 2 12.000 L 3 12.000 M 18.359 18.359 L 19.067 19.067 M 4.932 4.932 L 5.640 5.640 M 15.536 8.463 C 17.489 10.416 17.489 13.583 15.536 15.536 C 13.583 17.489 10.416 17.489 8.463 15.536 C 6.510 13.583 6.510 10.416 8.463 8.463 C 10.416 6.510 13.583 6.510 15.536 8.463 Z M 15.536 8.463\"/>","system":"<g transform=\"scale(1.33333)\"><path d=\"M 9 15 C 12.312 15 15 12.312 15 9 C 15 5.687 12.312 3 9 3 Z M 16.5 9 C 16.5 13.140 13.140 16.5 9 16.5 C 8.718 16.5 8.441 16.484 8.167 16.453 C 4.417 16.039 1.5 12.859 1.5 9 C 1.5 5.140 4.417 1.960 8.167 1.546 C 8.441 1.515 8.718 1.5 9 1.5 C 13.140 1.5 16.5 4.859 16.5 9 Z M 16.5 9\" fill=\"currentColor\" stroke=\"none\" fill-rule=\"evenodd\"/></g>","touch":"<path d=\"M 13.000 9 L 13.000 12.000 L 16.000 12.000 C 17.656 12.000 19.000 13.343 19.000 15.000 L 19.000 16.000 C 19.000 18.760 16.760 21.000 14.000 21.000 L 13.140 21.000 C 11.802 21.000 10.552 20.333 9.812 19.218 L 7 15.000 L 7.192 14.515 C 7.625 13.432 8.895 12.947 9.942 13.473 L 10 13.500 L 10 9 C 10 8.171 10.671 7.5 11.5 7.5 C 12.328 7.5 13.000 8.171 13.000 9 Z M 13.000 9\"/><path d=\"M 17.416 8 C 16.942 5.161 14.473 3 11.5 3 C 8.187 3 5.5 5.687 5.5 9 C 5.5 9.338 5.526 9.677 5.583 10\"/>","trash":"<path d=\"M 5 6.5 L 5.869 19.135 C 5.942 20.187 6.817 21.000 7.864 21.000 L 16.135 21.000 C 17.182 21.000 18.057 20.187 18.130 19.135 L 19.000 6.5\"/><path d=\"M 10 11 L 10 16.000\"/><path d=\"M 14.000 11 L 14.000 16.000\"/><path d=\"M 3.5 6 L 20.500 6\"/><path d=\"M 8.072 5.744 C 8.421 3.895 10.046 2.5 12.000 2.5 C 13.953 2.5 15.578 3.895 15.927 5.744\"/>","tv":"<path d=\"M 3 6 C 3 4.895 3.895 4 5 4 L 19.000 4 C 20.104 4 21.000 4.895 21.000 6 L 21.000 14.000 C 21.000 15.104 20.104 16.000 19.000 16.000 L 5 16.000 C 3.895 16.000 3 15.104 3 14.000 Z M 3 6\"/><path d=\"M 18.000 20.000 C 16.114 19.348 14.098 19.000 12.000 19.000 C 9.901 19.000 7.885 19.348 6 20.000\"/>","unpin":"<path d=\"M 8 16.000 L 11.536 19.536 C 12.630 20.630 14.494 20.125 14.885 18.630 L 15.578 16.005 M 8 16.000 L 4.463 12.463 C 3.369 11.369 3.875 9.505 5.369 9.114 L 7.994 8.421 M 8 16.000 L 4 20.000 M 12.250 6 L 13.260 3.984 C 13.869 2.760 15.494 2.494 16.463 3.463 L 20.536 7.536 C 21.505 8.505 21.239 10.130 20.015 10.739 L 18.000 11.75 M 3 3 L 21.000 21.000\"/>","volume-off":"<path d=\"M 21.500 10 L 19.380 12.119 M 19.380 12.119 L 17.255 14.244 M 19.380 12.119 L 17.255 10 M 19.380 12.119 L 21.500 14.244 M 4 8 L 5.333 8 C 5.765 8 6.187 7.859 6.531 7.598 L 11.197 4.098 C 11.531 3.854 12.000 4.088 12.000 4.5 L 12.000 19.500 C 12.000 19.911 11.531 20.145 11.197 19.901 L 6.531 16.401 C 6.187 16.140 5.765 16.000 5.333 16.000 L 4 16.000 C 2.895 16.000 2 15.104 2 14.000 L 2 10 C 2 8.895 2.895 8 4 8 Z M 4 8\"/>","volume":"<path d=\"M 15.890 8.109 C 16.885 9.104 17.500 10.479 17.500 12.000 C 17.500 13.520 16.885 14.895 15.890 15.890 M 4 8 L 5.333 8 C 5.765 8 6.187 7.859 6.531 7.598 L 11.197 4.098 C 11.531 3.854 12.000 4.088 12.000 4.5 L 12.000 19.500 C 12.000 19.911 11.531 20.145 11.197 19.901 L 6.531 16.401 C 6.187 16.140 5.765 16.000 5.333 16.000 L 4 16.000 C 2.895 16.000 2 15.104 2 14.000 L 2 10 C 2 8.895 2.895 8 4 8 Z M 4 8\"/>"};
   ICONS.power = '<path d="M12 3.2v8.3" style="stroke-width:2.4"/><path d="M6.6 6.6a7.6 7.6 0 1 0 10.8 0" style="stroke-width:2.4"/>';
-  const ic = (name, size = 22) => `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+
+  // Media icons, drawn to match (filled, rounded).
+  const tri = 'M11.2 6.6v10.8a.9.9 0 0 1-1.42.73L2.9 12.73a.9.9 0 0 1 0-1.46l6.88-5.4a.9.9 0 0 1 1.42.73z';
+  const tri2 = 'M21.2 6.6v10.8a.9.9 0 0 1-1.42.73l-6.88-5.4a.9.9 0 0 1 0-1.46l6.88-5.4a.9.9 0 0 1 1.42.73z';
+  ICONS.play = '<path d="M7.5 5.2v13.6a1.1 1.1 0 0 0 1.67.94l11-6.8a1.1 1.1 0 0 0 0-1.88l-11-6.8a1.1 1.1 0 0 0-1.67.94z"/>';
+  ICONS.pause = '<rect x="5.8" y="4.5" width="4.4" height="15" rx="1.5"/><rect x="13.8" y="4.5" width="4.4" height="15" rx="1.5"/>';
+  ICONS.rewind = `<path d="${tri}"/><path d="${tri2}"/>`;
+  ICONS.forward = `<g transform="matrix(-1 0 0 1 24 0)"><path d="${tri}"/><path d="${tri2}"/></g>`;
+  const FILLED = new Set(['play', 'pause', 'rewind', 'forward']);
+  const ic = (name, size = 22) => `<svg class="ic${FILLED.has(name) ? ' fill' : ''}" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
   const hydrate = (root) => root.querySelectorAll('[data-icon]').forEach((el) => { el.outerHTML = ic(el.dataset.icon, +el.dataset.size || 22); });
 
   // ---------- Logos: Simple Icons (CC0), the app's bundled ones; the logos are their owners' trademarks ----------
@@ -394,6 +467,8 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
   const fmtMin = (m) => (m < 60 ? m + ' min' : m % 60 ? Math.floor(m / 60) + ' hr ' + (m % 60) + ' min' : m / 60 + ' hr');
   const clock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const minsLeft = (t) => Math.max(1, Math.ceil((t.sleepEnd - Date.now()) / 60000));
+  // What's on screen is in the strip, so the header only speaks up for off and sleep.
+  const headerStatus = (t) => (!t.on ? 'Off' : t.sleepEnd ? 'Sleeping in ' + fmtMin(minsLeft(t)) : '');
   const status = (t) => (!t.on ? 'Off' : t.sleepEnd ? 'Sleeping in ' + fmtMin(minsLeft(t)) : t.app ? 'Watching ' + t.app : 'On');
 
   // ---------- Appearance and theme color (kept on this device only) ----------
@@ -585,6 +660,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
   function launch(title) {
     const t = tv();
     t.app = title;
+    t.playing = true;
     renderAll();
   }
   function openFavorite(title) {
@@ -645,13 +721,14 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
   function renderAll() {
     const t = tv();
     $('tvName').textContent = t.name;
-    $('tvStatus').textContent = status(t);
+    $('tvStatus').textContent = headerStatus(t);
     app.classList.toggle('is-off', !t.on);
     $('powerBtn').setAttribute('aria-label', 'Turn off ' + t.name);
     $('wakeBtn').setAttribute('aria-label', 'Turn on ' + t.name);
     renderVolume();
     renderTiles();
     renderFavorites();
+    renderPlayer();
     if (sheetKind) renderSheet(false);
   }
 
@@ -674,7 +751,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
       setHeight();
       sheet.style.transform = '';
       sheet.classList.add('open'); scrim.classList.add('open');
-      app.inert = true;
+      app.inert = true; player.inert = true;
       setTimeout(() => body.querySelector('[data-close]')?.focus({ preventScroll: true }), 80);
     };
     if (wasOpen) { closeSheet(true); setTimeout(show, 300); } else show();
@@ -685,7 +762,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
     sheetKind = null;
     sheet.classList.remove('open', 'dragging');
     scrim.classList.remove('open');
-    if (!swapping) { app.inert = false; }
+    if (!swapping) { app.inert = false; player.inert = false; }
   }
   scrim.addEventListener('click', () => closeSheet());
   sheet.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
@@ -1182,6 +1259,96 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
     if (sheetKind === 'allApps') renderAllApps();
   }
 
+  // ---------- Now-playing strip ----------
+  // Collapsed it sits over the bottom of the screen; tap or swipe up to open it, drag down to put it away.
+  // The TVs report which app is on screen, not the show or how far into it you are, so there's no title or progress bar.
+  const player = $('player'), pScrim = $('pScrim');
+  tvs.forEach((t) => { t.playing = true; });
+  // A dark shade of each app's brand color, like Spotify tinting the player with the album art.
+  const BRAND = { 'HBO Max': '#2E1466', 'Apple TV': '#1F1F22' };
+  function brand(title) {
+    if (BRAND[title]) return BRAND[title];
+    const l = LOGOS[title];
+    if (!l) return '#2C2C30';
+    const plain = (c) => /^#(fff|ffffff|000|000000)$/i.test(c);
+    const c = plain(l.glyph) ? l.tile : l.glyph;
+    const [r, g, b] = toRGB(parseInt(c.slice(1), 16));
+    return toHex([r * 0.42, g * 0.42, b * 0.42]);
+  }
+  let expanded = false, artTitle = null;
+  function fitPlayer() { player.style.setProperty('--fx', ($('device').clientWidth - 210) / 2 + 'px'); }
+  function renderPlayer() {
+    const t = tv(), show = t.on && !!t.app;
+    player.classList.toggle('hidden', !show);
+    if (!show) { if (expanded) collapse(); return; }
+    player.style.setProperty('--brand', brand(t.app));
+    player.classList.toggle('playing', !!t.playing);
+    if (artTitle !== t.app) { $('pArt').innerHTML = appIcon(t.app, 210); artTitle = t.app; }
+    $('pMiniTitle').textContent = $('pTitle').textContent = t.app;
+    $('pMiniSub').textContent = $('pSub').textContent = t.name;
+    const label = (t.playing ? 'Pause ' : 'Play ') + t.app;
+    $('pMiniPlay').innerHTML = ic(t.playing ? 'pause' : 'play', 24);
+    $('pPlay').innerHTML = ic(t.playing ? 'pause' : 'play', 34);
+    $('pMiniPlay').setAttribute('aria-label', label);
+    $('pPlay').setAttribute('aria-label', label);
+  }
+  function expand() {
+    if (expanded || player.classList.contains('hidden')) return;
+    fitPlayer();
+    expanded = true;
+    player.classList.add('full'); pScrim.classList.add('open');
+    app.inert = true;
+    $('pOpen').tabIndex = -1; $('pMiniPlay').tabIndex = -1;
+    setTimeout(() => $('pCollapse').focus({ preventScroll: true }), 120);
+  }
+  function collapse() {
+    if (!expanded) return;
+    expanded = false;
+    player.classList.remove('full', 'dragging'); player.style.transform = '';
+    pScrim.classList.remove('open');
+    app.inert = false;
+    $('pOpen').tabIndex = 0; $('pMiniPlay').tabIndex = 0;
+  }
+  const togglePlay = () => { const t = tv(); t.playing = !t.playing; renderPlayer(); };
+  $('pMiniPlay').addEventListener('click', (e) => { e.stopPropagation(); togglePlay(); });
+  $('pPlay').addEventListener('click', togglePlay);
+  $('pCollapse').addEventListener('click', collapse);
+  pScrim.addEventListener('click', collapse);
+  const nudge = (btn, cls) => { btn.classList.remove(cls); void btn.offsetWidth; btn.classList.add(cls); };
+  $('pBack').addEventListener('click', () => nudge($('pBack'), 'nudge-back'));
+  $('pFwd').addEventListener('click', () => nudge($('pFwd'), 'nudge-fwd'));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && expanded) collapse(); });
+  // Tap or swipe up on the strip to open; drag the open player down to put it away.
+  (() => {
+    let y0 = null, dy = 0, opened = false;
+    const scale = () => $('device').getBoundingClientRect().width / $('device').offsetWidth || 1;
+    player.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('#pMiniPlay, .p-transport, #pCollapse')) return;
+      y0 = e.clientY; dy = 0; opened = false;
+      player.setPointerCapture?.(e.pointerId);
+    });
+    player.addEventListener('pointermove', (e) => {
+      if (y0 == null) return;
+      dy = (e.clientY - y0) / scale();
+      if (!expanded) { if (dy < -24 && !opened) { opened = true; expand(); } return; }
+      if (dy > 0) { player.classList.add('dragging'); player.style.transform = `translateY(${dy}px)`; }
+    });
+    const up = () => {
+      if (y0 == null) return;
+      y0 = null;
+      if (expanded && player.classList.contains('dragging')) {
+        player.classList.remove('dragging');
+        if (dy > 110) collapse(); else player.style.transform = '';
+        return;
+      }
+      if (!expanded && !opened && Math.abs(dy) < 8) expand();
+    };
+    player.addEventListener('pointerup', up);
+    player.addEventListener('pointercancel', () => { y0 = null; player.classList.remove('dragging'); player.style.transform = ''; });
+    // Keyboard: the strip's text is a button.
+    $('pOpen').addEventListener('click', (e) => { if (e.detail === 0) expand(); });
+  })();
+
   // ---------- Fit the device frame to the window ----------
   function fit() {
     const phone = window.matchMedia('(max-width: 500px)').matches;
@@ -1192,6 +1359,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
     vX.v = vX.t = (tv().volume / 100) * VW; vX.vel = 0;
     drawVol();
     if (sheetKind) setHeight();
+    fitPlayer();
   }
   window.addEventListener('resize', fit);
 
@@ -1200,7 +1368,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
     tvs.forEach((t) => { if (t.sleepEnd && t.sleepEnd <= Date.now()) { t.on = false; t.sleepEnd = null; t.app = null; changed = true; } });
     if (changed) { renderAll(); return; }
     if (tv().sleepEnd) {
-      $('tvStatus').textContent = status(tv());
+      $('tvStatus').textContent = headerStatus(tv());
       renderTiles();
       if (sheetKind === 'sleep' && !dialDrag) { dFill.t = remainingMs() / 60000; renderDialText(); kick(); }
     }

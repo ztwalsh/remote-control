@@ -260,6 +260,10 @@ public struct VizioKey: Sendable, Equatable {
     public static let ok = VizioKey(codeset: 3, code: 2)
     public static let back = VizioKey(codeset: 4, code: 0)
     public static let home = VizioKey(codeset: 4, code: 15)
+    public static let seekForward = VizioKey(codeset: 2, code: 0)
+    public static let seekBack = VizioKey(codeset: 2, code: 1)
+    public static let pause = VizioKey(codeset: 2, code: 2)
+    public static let play = VizioKey(codeset: 2, code: 3)
 }
 
 extension JSONValue {
